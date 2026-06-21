@@ -206,9 +206,9 @@ export function records(samples: PSample[]): Records {
   };
 }
 
-// ---- sea-breeze heuristic -------------------------------------------------
+// ---- thermal-build heuristic ----------------------------------------------
 
-export interface SeaBreezeDay {
+export interface ThermalDay {
   day: string;
   morningMean: number;
   afternoonMean: number;
@@ -216,10 +216,10 @@ export interface SeaBreezeDay {
   afternoonDir: string;
   dirSpread: number; // circular σ-ish, smaller = steadier
 }
-export interface SeaBreeze {
+export interface Thermals {
   enough: boolean;
   buildKtsThreshold: number;
-  days: SeaBreezeDay[]; // flagged "thermal-like" days, most recent first
+  days: ThermalDay[]; // flagged thermal-build days, most recent first
   scannedDays: number;
 }
 
@@ -250,19 +250,19 @@ function circMean(dirs: number[]): number {
 }
 
 /**
- * A lake/sea breeze reads as a calm-ish morning giving way to a steadier,
+ * A lake thermal reads as a calm-ish morning giving way to a steadier,
  * stronger afternoon from a consistent direction. We flag days where the
  * afternoon (12–18h CT) mean beats the morning (6–11h CT) mean by a threshold
  * and the afternoon direction is reasonably steady.
  */
-export function seaBreeze(samples: PSample[], unit: Unit): SeaBreeze {
+export function thermals(samples: PSample[], unit: Unit): Thermals {
   const buildKtsThreshold = unit === "kts" ? 4 : 4.6;
   const byDay = new Map<string, PSample[]>();
   for (const s of samples) {
     const k = ctDayKey(s.t);
     (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(s);
   }
-  const flagged: SeaBreezeDay[] = [];
+  const flagged: ThermalDay[] = [];
   for (const [day, ss] of byDay) {
     const morning = ss.filter((s) => {
       const h = ctHour(s.t);

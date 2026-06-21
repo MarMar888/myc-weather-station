@@ -15,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   baroLag,
   records,
-  seaBreeze,
+  thermals,
   windRose,
   type PSample,
   type Unit,
@@ -179,14 +179,14 @@ function RecordsGrid({ samples, unit }: { samples: PSample[]; unit: Unit }) {
   );
 }
 
-// ---- sea breeze -----------------------------------------------------------
+// ---- thermals -------------------------------------------------------------
 
-function SeaBreezePanel({ samples, unit }: { samples: PSample[]; unit: Unit }) {
-  const sb = useMemo(() => seaBreeze(samples, unit), [samples, unit]);
+function ThermalsPanel({ samples, unit }: { samples: PSample[]; unit: Unit }) {
+  const sb = useMemo(() => thermals(samples, unit), [samples, unit]);
   if (!sb.days.length) {
     return (
       <Empty>
-        No clear sea-breeze pattern in {sb.scannedDays} day{sb.scannedDays === 1 ? "" : "s"} scanned.
+        No clear thermal pattern in {sb.scannedDays} day{sb.scannedDays === 1 ? "" : "s"} scanned.
         Looks for a calm morning building to a steadier, stronger afternoon (≥{sb.buildKtsThreshold.toFixed(0)} {unit} jump).
       </Empty>
     );
@@ -220,13 +220,20 @@ function BaroLagPanel({ samples }: { samples: PSample[] }) {
     return <Empty>{bl.reason}</Empty>;
   }
   const leads = (bl.bestLagMin ?? 0) < 0;
-  const dir = bl.bestR! < 0 ? "falling pressure → rising wind" : "rising pressure → rising wind";
+  const mins = Math.abs(bl.bestLagMin!);
+  const rTxt = bl.bestR!.toFixed(2).replace("-", "−");
+  const headline = leads
+    ? bl.bestR! < 0
+      ? `Falling pressure leads rising wind by ~${mins} min`
+      : `Rising pressure leads rising wind by ~${mins} min`
+    : bl.bestR! < 0
+      ? `Wind picks up ~${mins} min before pressure falls`
+      : `Wind and pressure move together (~${mins} min lag)`;
   return (
     <div>
-      <p className="text-sm text-[var(--ink)]">
-        Strongest link at a <span className="font-mono text-[var(--accent)]">{Math.abs(bl.bestLagMin!)}-min</span>{" "}
-        {leads ? "lead" : "lag"} (r = {bl.bestR!.toFixed(2)}).{" "}
-        <span className="text-[var(--ink-soft)]">{dir}{leads ? ", pressure moving first — an early-warning tell." : "."}</span>
+      <p className="text-sm font-medium leading-snug text-[var(--ink)]">{headline}</p>
+      <p className="mt-1 text-sm leading-snug text-[var(--ink-soft)]">
+        Correlation r = {rTxt}.{leads ? " Pressure moves first — a handy early-warning tell." : ""}
       </p>
       <div className="mt-3 h-40">
         <div className={`mb-1 ${LABEL}`}>Correlation vs lag · min (negative = pressure leads)</div>
@@ -299,8 +306,8 @@ export function PatternsView({ unit }: { unit: Unit }) {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-2xl text-sm text-[var(--ink-soft)]">
-          Long-run patterns from the stored history — where the wind comes from, your records, sea-breeze
-          days, and whether pressure leads the wind. Fills in as the database grows.
+          Long-run patterns from the stored history — where the wind comes from, your records, thermal
+          builds, and whether pressure leads the wind. Fills in as the database grows.
         </p>
         <ToggleGroup
           type="single"
@@ -324,8 +331,8 @@ export function PatternsView({ unit }: { unit: Unit }) {
         <Section title="Records & extremes">
           <RecordsGrid samples={samples} unit={unit} />
         </Section>
-        <Section title="Sea-breeze days">
-          <SeaBreezePanel samples={samples} unit={unit} />
+        <Section title="Thermal builds">
+          <ThermalsPanel samples={samples} unit={unit} />
         </Section>
         <Section title="Barometer → wind">
           <BaroLagPanel samples={samples} />
