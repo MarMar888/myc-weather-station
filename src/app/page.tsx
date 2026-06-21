@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
 import { PatternsView } from "@/components/patterns-view";
+import { RegimeLogView } from "@/components/regime-log-view";
 
 // ---- types ---------------------------------------------------------------
 
@@ -374,7 +375,7 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
 
 // ---- page ----------------------------------------------------------------
 
-type Tab = "live" | "osc" | "patterns";
+type Tab = "live" | "osc" | "patterns" | "log";
 
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("live");
@@ -536,7 +537,7 @@ export default function Dashboard() {
     <button
       key={id}
       onClick={() => setTab(id)}
-      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+      className={`-mb-px border-b-2 px-3 py-2.5 text-sm transition-colors ${
         tab === id
           ? "border-[var(--accent)] text-[var(--ink)]"
           : "border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]"
@@ -598,7 +599,7 @@ export default function Dashboard() {
               href="/docs"
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
+              className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
             >
               Docs ↗
             </a>
@@ -653,6 +654,7 @@ export default function Dashboard() {
           {tabBtn("live", "Live")}
           {tabBtn("osc", "Oscillation")}
           {tabBtn("patterns", "Patterns")}
+          {tabBtn("log", "Log")}
         </nav>
 
         {noData && (
@@ -671,6 +673,8 @@ export default function Dashboard() {
           <OscillationView unit={unit} />
         ) : tab === "patterns" ? (
           <PatternsView unit={unit} />
+        ) : tab === "log" ? (
+          <RegimeLogView />
         ) : (
           <>
             {/* hero — primary wind instrument */}
@@ -808,7 +812,7 @@ export default function Dashboard() {
           <span className="flex items-center gap-4">
             <button
               onClick={() => setFeatureOpen(true)}
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               Request a Feature
             </button>
@@ -816,7 +820,7 @@ export default function Dashboard() {
               href="https://www.weatherlink.com/embeddablePage/show/25aa5d18618f41a8894a5ba0b092df3d/summary"
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               Source
             </a>
@@ -824,11 +828,11 @@ export default function Dashboard() {
               href="https://github.com/MarMar888/myc-weather-station"
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               GitHub
             </a>
-            <a href="mailto:marley@squeakycleanboats.com" className="transition-colors hover:text-[var(--accent)]">
+            <a href="mailto:marley@squeakycleanboats.com" className="py-1 transition-colors hover:text-[var(--accent)]">
               marley@squeakycleanboats.com
             </a>
           </span>
