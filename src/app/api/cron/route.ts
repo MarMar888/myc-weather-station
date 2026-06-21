@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchReading } from "@/lib/weatherlink";
 import { insertReading, pruneOlderThan } from "@/lib/db";
+import { evaluatePipelineHealth } from "@/lib/alerts";
 
 // Drop readings older than this on every run, so the table self-trims.
 const RETENTION_DAYS = 360;
@@ -22,11 +23,14 @@ async function handle(req: NextRequest) {
     const reading = await fetchReading();
     const inserted = await insertReading(reading);
     const pruned = await pruneOlderThan(RETENTION_DAYS);
+    // Pipeline-health check runs every poll but never blocks or fails the extract.
+    const health = await evaluatePipelineHealth().catch(() => null);
     return NextResponse.json({
       ok: true,
       recorded: true,
       inserted, // false when this observation was already stored
       pruned, // rows deleted for being older than RETENTION_DAYS
+      health, // { configured, status, sent }
       observed_at: reading.observed_at,
       wind_speed: reading.wind_speed,
       wind_gust_2min: reading.wind_gust_2min,

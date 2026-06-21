@@ -228,6 +228,11 @@ export interface Regime {
   gustFactor: number | null;
   speedStd: number | null;
   speedRate: number;
+  // tactical "now & next" (meaningful for the current/live regime)
+  nowBearing: number | null; // latest actual direction reading
+  nowPos: "ccw" | "mid" | "cw" | null; // where "now" sits inside the swing
+  proj15: number | null; // simple trend extrapolation, 15 min out (sig. trend only)
+  proj30: number | null;
   // chart + math
   series: { t: number; dev: number; trend: number }[];
   math: { label: string; value: string }[];
@@ -276,7 +281,9 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
     netShift: 0, shiftRate: 0, trendT: 0, trendP: 1,
     halfLifeMin: null, meanReverting: null, periodMin: null, reversals: 0, hurst: null,
     speedMean: null, speedMin: null, speedMax: null, gustMax: null, gustFactor: null,
-    speedStd: null, speedRate: 0, series: [], math: [],
+    speedStd: null, speedRate: 0,
+    nowBearing: null, nowPos: null, proj15: null, proj30: null,
+    series: [], math: [],
   };
 
   // speed stats (work regardless of direction availability)
@@ -332,6 +339,15 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   else if (amplitude < 8) type = "steady";
   else type = "oscillating";
 
+  // tactical "now & next": where the latest reading sits in the swing, and a
+  // plain trend extrapolation (only when the trend is statistically real).
+  const nowDev = centered[count - 1];
+  const frac = amplitude > 0 ? (nowDev - minDev) / amplitude : 0.5;
+  const nowPos: "ccw" | "mid" | "cw" = frac > 0.66 ? "cw" : frac < 0.34 ? "ccw" : "mid";
+  const projAt = (mins: number) => (((uw[count - 1] + reg.slope * mins * 60_000) % 360) + 360) % 360;
+  const proj15 = sigShift ? projAt(15) : null;
+  const proj30 = sigShift ? projAt(30) : null;
+
   const series = dirPts.map((p, i) => ({
     t: p.t,
     dev: centered[i],
@@ -359,6 +375,7 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
     startBearing: dirs[0], endBearing: dirs[count - 1],
     netShift, shiftRate, trendT: reg.t, trendP: reg.p,
     halfLifeMin: ou.halfLifeMin, meanReverting, periodMin, reversals, hurst,
+    nowBearing: dirs[count - 1], nowPos, proj15, proj30,
     series, math,
   };
 }
@@ -428,4 +445,47 @@ export function glossesFor(a: Regime, unitLabel: string): string[] {
     );
   }
   return out;
+}
+
+/**
+ * Course-free tactical "now & next" for the live regime: where the wind sits in
+ * its swing right now, and the higher-odds next move. The projection is a plain
+ * extrapolation of the already-fitted trend (not a forecast model) and only
+ * appears when that trend is statistically real.
+ */
+export function tacticalReadout(a: Regime): { now: string; next: string } | null {
+  if (a.type === "calm" || a.type === "insufficient" || a.nowBearing == null || a.meanDir == null) {
+    return null;
+  }
+  const posWord =
+    a.nowPos === "cw"
+      ? "near the right (clockwise) edge of the swing"
+      : a.nowPos === "ccw"
+        ? "near the left (counter-clockwise) edge of the swing"
+        : "mid-swing";
+  const now = `Now ${compass16(a.nowBearing)} ${r(a.nowBearing)}° — ${posWord} (mean ${r(a.meanDir)}°).`;
+
+  let next: string;
+  if (a.type === "veering" || a.type === "backing") {
+    const side = a.type === "veering" ? "right" : "left";
+    next =
+      a.proj15 != null && a.proj30 != null
+        ? `If the trend holds → ~${compass16(a.proj15)} ${r(a.proj15)}° in 15 min, ~${compass16(a.proj30)} ${r(a.proj30)}° in 30 min. Favour the new (${side}) side.`
+        : `Shifting ${side} — favour the new side.`;
+  } else if (a.type === "oscillating") {
+    if (a.nowPos === "mid") {
+      next = `Mid-swing — the next move could break either way around ${r(a.meanDir)}°.`;
+    } else {
+      const back = a.nowPos === "cw" ? "left / CCW" : "right / CW";
+      const when = a.periodMin
+        ? ` (~${r(a.periodMin / 2)} min back to mean)`
+        : a.halfLifeMin
+          ? ` (~${r(a.halfLifeMin)} min half-life)`
+          : "";
+      next = `At the edge — better odds the next move is a header back ${back} toward ${r(a.meanDir)}°${when}.`;
+    }
+  } else {
+    next = `Holding ${compass16(a.meanDir)} ${r(a.meanDir)}° — no shift signalled.`;
+  }
+  return { now, next };
 }

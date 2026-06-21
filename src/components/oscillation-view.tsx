@@ -16,6 +16,7 @@ import {
   detectRegimes,
   glossesFor,
   summarizeRegime,
+  tacticalReadout,
   type Regime,
   type RegimeType,
   type WindSample,
@@ -74,6 +75,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
     return Math.ceil(mx * 1.15);
   }, [a.series]);
   const hasChart = a.series.length > 1 && a.type !== "calm" && a.type !== "insufficient";
+  const tactical = current ? tacticalReadout(a) : null;
 
   return (
     <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] p-5">
@@ -91,6 +93,16 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
           </span>
         )}
       </div>
+
+      {tactical && (
+        <div className="mb-3 rounded-md border border-[var(--accent)]/40 bg-[color-mix(in_oklab,var(--accent)_8%,transparent)] p-3">
+          <div className={`mb-1.5 ${LABEL}`} style={{ color: "var(--accent)" }}>
+            Now &amp; next
+          </div>
+          <p className="text-sm font-medium leading-snug text-[var(--ink)]">{tactical.now}</p>
+          <p className="mt-1 text-sm leading-snug text-[var(--ink-soft)]">{tactical.next}</p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         {glosses.map((s, i) => (

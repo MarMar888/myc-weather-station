@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CardSpotlight } from "@/components/ui/card-spotlight";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
+import { PatternsView } from "@/components/patterns-view";
 
 // ---- types ---------------------------------------------------------------
 
@@ -209,7 +210,7 @@ function ChartCard({
 
 // ---- page ----------------------------------------------------------------
 
-type Tab = "live" | "osc";
+type Tab = "live" | "osc" | "patterns";
 
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("live");
@@ -419,6 +420,7 @@ export default function Dashboard() {
         <nav className="mb-6 flex gap-1 border-b border-[var(--hairline)]">
           {tabBtn("live", "Live")}
           {tabBtn("osc", "Oscillation")}
+          {tabBtn("patterns", "Patterns")}
         </nav>
 
         {noData && (
@@ -435,6 +437,8 @@ export default function Dashboard() {
 
         {tab === "osc" ? (
           <OscillationView unit={unit} />
+        ) : tab === "patterns" ? (
+          <PatternsView unit={unit} />
         ) : (
           <>
             {/* hero — primary wind instrument */}

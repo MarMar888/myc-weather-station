@@ -27,6 +27,11 @@ ${numericCols},
       raw_json TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_readings_observed_at ON readings (observed_at);
+    CREATE TABLE IF NOT EXISTS alerts_state (
+      key TEXT PRIMARY KEY,
+      active INTEGER NOT NULL DEFAULT 0,
+      last_sent INTEGER NOT NULL DEFAULT 0
+    );
   `;
   // executeMultiple runs the statements sequentially.
   _schemaReady = db()
@@ -102,6 +107,34 @@ export async function getLatest(): Promise<HistoryRow | null> {
     )} FROM readings ORDER BY observed_at DESC LIMIT 1`,
   );
   return (res.rows[0] as unknown as HistoryRow) ?? null;
+}
+
+// ---- alert cooldown state -------------------------------------------------
+
+export interface AlertState {
+  active: number; // 1 while the condition is currently "armed/firing"
+  last_sent: number; // epoch ms of the last email for this key
+}
+
+/** Read the cooldown/edge state for one alert key (defaults to inactive). */
+export async function getAlertState(key: string): Promise<AlertState> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: "SELECT active, last_sent FROM alerts_state WHERE key = ?",
+    args: [key],
+  });
+  const r = res.rows[0] as unknown as AlertState | undefined;
+  return r ? { active: Number(r.active), last_sent: Number(r.last_sent) } : { active: 0, last_sent: 0 };
+}
+
+/** Upsert the cooldown/edge state for one alert key. */
+export async function setAlertState(key: string, state: AlertState): Promise<void> {
+  await ensureSchema();
+  await db().execute({
+    sql: `INSERT INTO alerts_state (key, active, last_sent) VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET active = excluded.active, last_sent = excluded.last_sent`,
+    args: [key, state.active, state.last_sent],
+  });
 }
 
 export async function getStats(): Promise<{
