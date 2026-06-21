@@ -194,7 +194,7 @@ function ChartCard({
         {meta ? <span className="font-mono text-[10px] text-[var(--ink-faint)]">{meta}</span> : null}
       </div>
       <div style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           {children}
         </ResponsiveContainer>
       </div>

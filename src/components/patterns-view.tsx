@@ -237,7 +237,7 @@ function BaroLagPanel({ samples }: { samples: PSample[] }) {
       </p>
       <div className="mt-3 h-40">
         <div className={`mb-1 ${LABEL}`}>Correlation vs lag · min (negative = pressure leads)</div>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={bl.series} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
             <CartesianGrid stroke="var(--grid)" vertical={false} />
             <XAxis dataKey="lagMin" type="number" domain={["dataMin", "dataMax"]} {...AXIS} />

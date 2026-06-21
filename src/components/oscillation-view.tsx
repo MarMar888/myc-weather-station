@@ -126,7 +126,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
       {hasChart && (
         <div className="mt-3 h-40">
           <div className={`mb-1 ${LABEL}`}>Direction vs mean · deg</div>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <LineChart data={a.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid stroke="var(--grid)" vertical={false} />
               <XAxis dataKey="t" tickFormatter={(t) => timeFmt.format(new Date(t))} {...AXIS} minTickGap={44} />
