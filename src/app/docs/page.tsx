@@ -105,6 +105,23 @@ export default function DocsPage() {
         </ul>
       </section>
 
+      <section id="oscillation" className="mb-10 space-y-4 scroll-mt-20">
+        <h2 className="text-[10px] uppercase tracking-[0.2em] text-[var(--ink-faint)]">Oscillation Analysis</h2>
+        <p className="text-sm leading-7 text-[var(--ink-soft)]">
+          The data picks the time periods, not you. Change-point detection splits the last 3 hours
+          into <span className="text-[var(--ink)]">regimes</span> wherever the wind&apos;s behaviour
+          actually changes; each regime is classified with quantitative time-series stats —
+          mean-reversion vs trend, Ornstein–Uhlenbeck half-life, and trend significance — and every
+          statistic is gated on sample size so small-n noise is never dressed up as a finding.
+        </p>
+        <p className="text-sm leading-7 text-[var(--ink-soft)]">
+          The fixed 30m / 1h / Day lenses are optional and may straddle regimes. The{" "}
+          <span className="text-[var(--ink)]">Now &amp; next</span> readout on the current regime
+          shows where the wind sits in its swing and the higher-odds next move; any projection is a
+          plain extrapolation of the fitted trend, shown only when that trend is statistically real.
+        </p>
+      </section>
+
       <section className="space-y-2 border-t border-[var(--hairline)] pt-6">
         <h2 className="text-[10px] uppercase tracking-[0.2em] text-[var(--ink-faint)]">Hardware</h2>
         <p className="text-sm text-[var(--ink-soft)] leading-7">

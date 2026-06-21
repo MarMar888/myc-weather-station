@@ -18,6 +18,9 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
+import { PatternsView } from "@/components/patterns-view";
+import { RegimeLogView } from "@/components/regime-log-view";
+import { Loader } from "@/components/loader";
 
 // ---- types ---------------------------------------------------------------
 
@@ -74,7 +77,7 @@ function baroTrend(t: number | null): string {
 
 // ---- shared primitives ---------------------------------------------------
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
+const LABEL = "text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
 
 function StatRow({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
@@ -194,7 +197,7 @@ function ChartCard({
         {meta ? <span className="font-mono text-[10px] text-[var(--ink-faint)]">{meta}</span> : null}
       </div>
       <div style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           {children}
         </ResponsiveContainer>
       </div>
@@ -377,7 +380,7 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
 
 // ---- page ----------------------------------------------------------------
 
-type Tab = "live" | "osc";
+type Tab = "live" | "osc" | "patterns" | "log";
 
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("live");
@@ -463,6 +466,38 @@ export default function Dashboard() {
   }, [series]);
 
   const noData = (data?.stats.count ?? 0) === 0;
+
+  // How much history we actually have, used to gate the range presets and the
+  // "data since" widget so we never offer a window wider than the data.
+  const firstObs = data?.stats.first ?? null;
+  const lastObs = data?.stats.last ?? null;
+  const dataSpanHours = firstObs && lastObs ? (lastObs - firstObs) / 3_600_000 : 0;
+  const liveRanges = useMemo(
+    () => RANGES.filter((r, i) => i === 0 || dataSpanHours >= r.hours),
+    [dataSpanHours],
+  );
+  const since = useMemo(() => {
+    if (!firstObs) return null;
+    const d = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(firstObs));
+    const days = dataSpanHours / 24;
+    const span =
+      days >= 1 ? `${Math.round(days)} day${Math.round(days) === 1 ? "" : "s"}` : `${Math.round(dataSpanHours)} h`;
+    return { d, span };
+  }, [firstObs, dataSpanHours]);
+
+  // If the selected preset is wider than the data now allows, fall back.
+  useEffect(() => {
+    const isPreset = RANGES.some((r) => r.hours === hours);
+    if (isPreset && !liveRanges.some((r) => r.hours === hours)) {
+      const largest = liveRanges[liveRanges.length - 1];
+      if (largest && largest.hours !== hours) setHours(largest.hours);
+    }
+  }, [liveRanges, hours]);
 
   const w = (k: string) => fmt(windVal(num(current, k), unit));
   const windItems = [
@@ -557,13 +592,22 @@ export default function Dashboard() {
               {(current?.owner_name as string) ?? "Minnetonka Yacht Club"}
             </h1>
             <p className="mt-0.5 text-sm text-[var(--ink-soft)]">Wind & weather telemetry</p>
+            {since && (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-[var(--panel)] px-3 py-1">
+                <span className="size-1.5 rounded-full bg-[var(--accent)]" />
+                <span className="font-mono text-[11px] text-[var(--ink-soft)]">
+                  Historical data since {since.d}
+                  <span className="text-[var(--ink-faint)]"> · {since.span}</span>
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <a
               href="/docs"
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
+              className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
             >
               Docs ↗
             </a>
@@ -589,7 +633,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-1">
                 <ToggleGroup
                   type="single"
-                  value={RANGES.some((r) => r.hours === hours) ? String(hours) : ""}
+                  value={liveRanges.some((r) => r.hours === hours) ? String(hours) : ""}
                   onValueChange={(v) => {
                     if (!v) return;
                     setHours(Number(v));
@@ -598,7 +642,7 @@ export default function Dashboard() {
                   variant="outline"
                   className="border-[var(--hairline)]"
                 >
-                  {RANGES.map((r) => (
+                  {liveRanges.map((r) => (
                     <ToggleGroupItem key={r.label} value={String(r.hours)} className="px-3 font-mono text-xs">
                       {r.label}
                     </ToggleGroupItem>
@@ -625,6 +669,8 @@ export default function Dashboard() {
         <nav className="mb-6 flex gap-1 border-b border-[var(--hairline)]">
           {tabBtn("live", "Live")}
           {tabBtn("osc", "Oscillation")}
+          {tabBtn("patterns", "Patterns")}
+          {tabBtn("log", "Log")}
         </nav>
 
         {noData && (
@@ -641,6 +687,12 @@ export default function Dashboard() {
 
         {tab === "osc" ? (
           <OscillationView unit={unit} />
+        ) : tab === "patterns" ? (
+          <PatternsView unit={unit} />
+        ) : tab === "log" ? (
+          <RegimeLogView />
+        ) : data === null && !error ? (
+          <Loader label="Loading wind data" minH={400} />
         ) : (
           <>
             {/* hero — primary wind instrument */}
@@ -704,7 +756,7 @@ export default function Dashboard() {
 
             {/* charts */}
             <ChartCard title={`Wind speed & gust · ${u}`} meta={`${series.length} pts`} height={300} className="mb-4">
-              <AreaChart data={series} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+              <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gWind" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
@@ -712,11 +764,11 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="var(--grid)" vertical={false} />
-                <XAxis dataKey="t" tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
-                <YAxis {...AXIS} domain={[0, Math.ceil((windMax || 5) * 1.1)]} width={34} />
+                <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
+                <YAxis {...AXIS} domain={[0, Math.max(5, Math.ceil(windMax))]} allowDecimals={false} width={32} />
                 <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v, n) => [v == null ? "—" : Number(v).toFixed(1), n]} />
-                <Area type="monotone" dataKey="gust" name="gust" stroke="var(--ink-faint)" strokeWidth={1} fill="none" dot={false} isAnimationActive={false} />
-                <Area type="monotone" dataKey="wind" name="wind" stroke="var(--accent)" strokeWidth={2} fill="url(#gWind)" dot={false} isAnimationActive={false} />
+                <Area type="linear" dataKey="gust" name="gust" stroke="var(--ink-faint)" strokeWidth={1} fill="none" dot={false} connectNulls isAnimationActive={false} />
+                <Area type="linear" dataKey="wind" name="wind" stroke="var(--accent)" strokeWidth={2} fill="url(#gWind)" dot={false} connectNulls isAnimationActive={false} />
               </AreaChart>
             </ChartCard>
 
@@ -732,22 +784,22 @@ export default function Dashboard() {
               </ChartCard>
 
               <ChartCard title="Temperature · °F">
-                <LineChart data={series} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="var(--grid)" vertical={false} />
-                  <XAxis dataKey="t" tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} domain={["auto", "auto"]} width={34} />
+                  <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
+                  <YAxis {...AXIS} domain={["auto", "auto"]} allowDecimals={false} width={32} />
                   <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} />
-                  <Line type="monotone" dataKey="temp" name="°F" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Line type="linear" dataKey="temp" name="°F" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 </LineChart>
               </ChartCard>
 
               <ChartCard title="Barometric pressure · inHg">
-                <LineChart data={series} margin={{ top: 8, right: 8, left: -4, bottom: 0 }}>
+                <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="var(--grid)" vertical={false} />
-                  <XAxis dataKey="t" tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} domain={["auto", "auto"]} width={46} tickFormatter={(v) => Number(v).toFixed(2)} />
+                  <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
+                  <YAxis {...AXIS} domain={["auto", "auto"]} width={48} tickFormatter={(v) => Number(v).toFixed(2)} />
                   <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v) => [Number(v).toFixed(3), "inHg"]} />
-                  <Line type="monotone" dataKey="baro" name="inHg" stroke="#2dd4bf" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Line type="linear" dataKey="baro" name="inHg" stroke="#2dd4bf" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 </LineChart>
               </ChartCard>
 
@@ -760,10 +812,10 @@ export default function Dashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="var(--grid)" vertical={false} />
-                  <XAxis dataKey="t" tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} domain={[0, 100]} width={34} />
+                  <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
+                  <YAxis {...AXIS} domain={[0, 100]} allowDecimals={false} width={32} />
                   <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} />
-                  <Area type="monotone" dataKey="hum" name="%" stroke="#7aa2c8" fill="url(#gHum)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Area type="linear" dataKey="hum" name="%" stroke="#7aa2c8" fill="url(#gHum)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 </AreaChart>
               </ChartCard>
             </div>
@@ -773,11 +825,12 @@ export default function Dashboard() {
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-[var(--hairline)] pt-4 font-mono text-[11px] text-[var(--ink-faint)]">
           <span>
             {data?.stats.count ?? 0} readings · new data every 3 minutes · 360-day retention
+            {process.env.NEXT_PUBLIC_APP_VERSION ? ` · v${process.env.NEXT_PUBLIC_APP_VERSION}` : ""}
           </span>
           <span className="flex items-center gap-4">
             <button
               onClick={() => setFeatureOpen(true)}
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               Request a Feature
             </button>
@@ -785,7 +838,7 @@ export default function Dashboard() {
               href="https://www.weatherlink.com/embeddablePage/show/25aa5d18618f41a8894a5ba0b092df3d/summary"
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               Source
             </a>
@@ -793,11 +846,11 @@ export default function Dashboard() {
               href="https://github.com/MarMar888/myc-weather-station"
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-[var(--accent)]"
+              className="py-1 transition-colors hover:text-[var(--accent)]"
             >
               GitHub
             </a>
-            <a href="mailto:marley@squeakycleanboats.com" className="transition-colors hover:text-[var(--accent)]">
+            <a href="mailto:marley@squeakycleanboats.com" className="py-1 transition-colors hover:text-[var(--accent)]">
               marley@squeakycleanboats.com
             </a>
           </span>

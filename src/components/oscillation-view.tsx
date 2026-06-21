@@ -17,16 +17,18 @@ import {
   detectRegimes,
   glossesFor,
   summarizeRegime,
+  tacticalReadout,
   type Regime,
   type RegimeType,
   type WindSample,
 } from "@/lib/oscillation";
+import { Loader } from "@/components/loader";
 
 const MPH_TO_KNOTS = 0.868976;
 type WindUnit = "kts" | "mph";
 type Row = Record<string, number | string | null> & { observed_at: number };
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
+const LABEL = "text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
 const AXIS = { stroke: "var(--axis)", fontSize: 10, fontFamily: "var(--font-geist-mono)" } as const;
 const tooltipStyle = {
   background: "var(--panel-2)",
@@ -75,6 +77,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
     return Math.ceil(mx * 1.15);
   }, [a.series]);
   const hasChart = a.series.length > 1 && a.type !== "calm" && a.type !== "insufficient";
+  const tactical = current ? tacticalReadout(a) : null;
 
   return (
     <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] p-5">
@@ -92,6 +95,16 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
           </span>
         )}
       </div>
+
+      {tactical && (
+        <div className="mb-3 rounded-md border border-[var(--accent)]/40 bg-[color-mix(in_oklab,var(--accent)_8%,transparent)] p-3">
+          <div className={`mb-1.5 ${LABEL}`} style={{ color: "var(--accent)" }}>
+            Now &amp; next
+          </div>
+          <p className="text-sm font-medium leading-snug text-[var(--ink)]">{tactical.now}</p>
+          <p className="mt-1 text-sm leading-snug text-[var(--ink-soft)]">{tactical.next}</p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         {glosses.map((s, i) => (
@@ -115,7 +128,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
       {hasChart && (
         <div className="mt-3 h-40">
           <div className={`mb-1 ${LABEL}`}>Direction vs mean · deg</div>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <LineChart data={a.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid stroke="var(--grid)" vertical={false} />
               <XAxis dataKey="t" tickFormatter={(t) => timeFmt.format(new Date(t))} {...AXIS} minTickGap={44} />
@@ -164,6 +177,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [mode, setMode] = useState<Mode>("regimes");
   const [selected, setSelected] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -171,6 +185,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
+      setLoaded(true);
     } catch {
       /* keep last good */
     }
@@ -210,13 +225,18 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
   const currentIdx = regimes.length - 1;
   const shownIdx = selected != null && selected < regimes.length ? selected : currentIdx;
 
+  if (!loaded) return <Loader label="Loading wind data" minH={320} />;
+
   return (
     <div>
-      <p className="mb-4 max-w-2xl text-sm text-[var(--ink-soft)]">
-        The data picks the time periods, not you. Change-point detection splits the last 3 hours into
-        regimes; each is classified with quant time-series stats (mean-reversion vs trend, half-life,
-        significance) and gated on sample size. Fixed lenses are optional and may straddle regimes.
-      </p>
+      <a
+        href="/docs#oscillation"
+        target="_blank"
+        rel="noreferrer"
+        className="mb-4 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
+      >
+        How this works ↗
+      </a>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ToggleGroup
