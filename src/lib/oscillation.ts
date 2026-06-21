@@ -233,6 +233,9 @@ export interface Regime {
   nowPos: "ccw" | "mid" | "cw" | null; // where "now" sits inside the swing
   proj15: number | null; // simple trend extrapolation, 15 min out (sig. trend only)
   proj30: number | null;
+  // significance / "conviction": 0..1, blends sample confidence, effect size,
+  // and statistical realness. Used to decide which regimes are worth logging.
+  significance: number;
   // chart + math
   series: { t: number; dev: number; trend: number }[];
   math: { label: string; value: string }[];
@@ -252,6 +255,9 @@ const TYPE_LABEL: Record<RegimeType, string> = {
 export interface RegimeOpts {
   calmCutoff: number; // in display unit
   withHurst?: boolean;
+  // Change-point detector tuning. Defaults suit the live ~3h window; the macro
+  // logger passes larger segments / more depth for day-scale regimes.
+  cp?: { minSeg?: number; thr?: number; maxDepth?: number };
 }
 
 function confidenceFor(n: number): Confidence {
@@ -282,7 +288,7 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
     halfLifeMin: null, meanReverting: null, periodMin: null, reversals: 0, hurst: null,
     speedMean: null, speedMin: null, speedMax: null, gustMax: null, gustFactor: null,
     speedStd: null, speedRate: 0,
-    nowBearing: null, nowPos: null, proj15: null, proj30: null,
+    nowBearing: null, nowPos: null, proj15: null, proj30: null, significance: 0,
     series: [], math: [],
   };
 
@@ -339,6 +345,18 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   else if (amplitude < 8) type = "steady";
   else type = "oscillating";
 
+  // significance ("conviction"), 0..1: confidence × (effect size + realness).
+  const confW = count >= 20 ? 1 : count >= 10 ? 0.6 : 0.3;
+  const effect = Math.max(Math.abs(netShift), amplitude * 0.7, Math.abs(base.speedRate) * 10);
+  const effScore = Math.min(1, effect / 40); // ~40° (or equiv) reads as a big move
+  const realScore =
+    type === "veering" || type === "backing"
+      ? Math.min(1, Math.abs(reg.t) / 4)
+      : type === "oscillating"
+        ? Math.min(1, amplitude / 30)
+        : 0; // steady → not significant
+  const significance = confW * (0.6 * effScore + 0.4 * realScore);
+
   // tactical "now & next": where the latest reading sits in the swing, and a
   // plain trend extrapolation (only when the trend is statistically real).
   const nowDev = centered[count - 1];
@@ -375,7 +393,7 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
     startBearing: dirs[0], endBearing: dirs[count - 1],
     netShift, shiftRate, trendT: reg.t, trendP: reg.p,
     halfLifeMin: ou.halfLifeMin, meanReverting, periodMin, reversals, hurst,
-    nowBearing: dirs[count - 1], nowPos, proj15, proj30,
+    nowBearing: dirs[count - 1], nowPos, proj15, proj30, significance,
     series, math,
   };
 }
@@ -387,7 +405,8 @@ export function detectRegimes(samples: WindSample[], opts: RegimeOpts): Regime[]
   if (dirPts.length < 5) return [summarizeRegime(sorted, opts)];
 
   const uw = unwrap(dirPts.map((p) => p.dir));
-  const cps = detectChangePoints(uw, 5, 3, 2); // indices into dirPts
+  const cp = opts.cp ?? {};
+  const cps = detectChangePoints(uw, cp.minSeg ?? 5, cp.thr ?? 3, cp.maxDepth ?? 2); // indices into dirPts
   const bounds = [0, ...cps, dirPts.length];
 
   const regimes: Regime[] = [];
