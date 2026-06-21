@@ -223,11 +223,14 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
 
   return (
     <div>
-      <p className="mb-4 max-w-2xl text-sm text-[var(--ink-soft)]">
-        The data picks the time periods, not you. Change-point detection splits the last 3 hours into
-        regimes; each is classified with quant time-series stats (mean-reversion vs trend, half-life,
-        significance) and gated on sample size. Fixed lenses are optional and may straddle regimes.
-      </p>
+      <a
+        href="/docs#oscillation"
+        target="_blank"
+        rel="noreferrer"
+        className="mb-4 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
+      >
+        How this works ↗
+      </a>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ToggleGroup type="single" value={mode} onValueChange={(v) => v && setMode(v as Mode)} variant="outline" className="border-[var(--hairline)]">

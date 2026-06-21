@@ -269,6 +269,7 @@ const RANGES: Range[] = [
 export function PatternsView({ unit }: { unit: Unit }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [hours, setHours] = useState(24 * 30);
+  const [spanHours, setSpanHours] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -277,6 +278,8 @@ export function PatternsView({ unit }: { unit: Unit }) {
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
+      const s = j.stats;
+      setSpanHours(s?.first && s?.last ? (s.last - s.first) / 3_600_000 : 0);
       setLoaded(true);
     } catch {
       /* keep last good */
@@ -288,6 +291,18 @@ export function PatternsView({ unit }: { unit: Unit }) {
     const id = setInterval(load, 5 * 60_000);
     return () => clearInterval(id);
   }, [load]);
+
+  // Only offer windows we actually have data for (always keep the smallest).
+  const availRanges = useMemo(
+    () => RANGES.filter((r, i) => i === 0 || spanHours >= r.hours),
+    [spanHours],
+  );
+  useEffect(() => {
+    if (!availRanges.some((r) => r.hours === hours)) {
+      const largest = availRanges[availRanges.length - 1];
+      if (largest && largest.hours !== hours) setHours(largest.hours);
+    }
+  }, [availRanges, hours]);
 
   const samples = useMemo<PSample[]>(() => {
     const k = (row: Row, key: string) => (typeof row[key] === "number" ? (row[key] as number) : null);
@@ -304,19 +319,15 @@ export function PatternsView({ unit }: { unit: Unit }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="max-w-2xl text-sm text-[var(--ink-soft)]">
-          Long-run patterns from the stored history — where the wind comes from, your records, thermal
-          builds, and whether pressure leads the wind. Fills in as the database grows.
-        </p>
+      <div className="mb-4 flex items-center justify-end">
         <ToggleGroup
           type="single"
-          value={String(hours)}
+          value={availRanges.some((r) => r.hours === hours) ? String(hours) : ""}
           onValueChange={(v) => v && setHours(Number(v))}
           variant="outline"
           className="border-[var(--hairline)]"
         >
-          {RANGES.map((rg) => (
+          {availRanges.map((rg) => (
             <ToggleGroupItem key={rg.label} value={String(rg.hours)} className="px-3 font-mono text-xs">
               {rg.label}
             </ToggleGroupItem>
