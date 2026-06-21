@@ -56,25 +56,27 @@ body {
 /* Instrument-panel tokens, theme-aware (used across the dashboard + charts). */
 :root {
   --panel: #ffffff;
-  --panel-2: #f8fafc;
-  --hairline: rgba(15, 23, 42, 0.1);
-  --grid: #e6ebf2;
-  --axis: #94a3b8;
+  --panel-2: #f3f6fa;
+  --hairline: rgba(15, 23, 42, 0.14);
+  --grid: #d8e0ec;
+  --axis: #5d6f88;
   --ink: #0f172a;
-  --ink-soft: #475569;
-  --ink-faint: #94a3b8;
+  --ink-soft: #334155;
+  --ink-faint: #64748b;
   --accent: #0284c7;
+  --speed-color: #0b3d6f;
 }
 .dark {
-  --panel: rgba(255, 255, 255, 0.02);
-  --panel-2: #0a0f1a;
-  --hairline: rgba(255, 255, 255, 0.1);
-  --grid: #16202f;
-  --axis: #475569;
-  --ink: #e2e8f0;
+  --panel: rgba(255, 255, 255, 0.025);
+  --panel-2: #0b1120;
+  --hairline: rgba(255, 255, 255, 0.13);
+  --grid: #1e2d42;
+  --axis: #607080;
+  --ink: #eaf0f8;
   --ink-soft: #94a3b8;
-  --ink-faint: #64748b;
+  --ink-faint: #6b7f96;
   --accent: #38bdf8;
+  --speed-color: #7dd3fc;
 }
 
 :root {
@@ -88,8 +90,8 @@ body {
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted: oklch(0.91 0.005 240);
+  --muted-foreground: oklch(0.45 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -101,7 +103,7 @@ body {
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0.4rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
