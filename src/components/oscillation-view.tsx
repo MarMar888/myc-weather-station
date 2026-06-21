@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import posthog from "posthog-js";
 import {
   CartesianGrid,
   Line,
@@ -21,6 +22,7 @@ import {
   type RegimeType,
   type WindSample,
 } from "@/lib/oscillation";
+import { Loader } from "@/components/loader";
 
 const MPH_TO_KNOTS = 0.868976;
 type WindUnit = "kts" | "mph";
@@ -175,6 +177,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [mode, setMode] = useState<Mode>("regimes");
   const [selected, setSelected] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -182,6 +185,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
+      setLoaded(true);
     } catch {
       /* keep last good */
     }
@@ -221,6 +225,8 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
   const currentIdx = regimes.length - 1;
   const shownIdx = selected != null && selected < regimes.length ? selected : currentIdx;
 
+  if (!loaded) return <Loader label="Loading wind data" minH={320} />;
+
   return (
     <div>
       <a
@@ -233,7 +239,17 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
       </a>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <ToggleGroup type="single" value={mode} onValueChange={(v) => v && setMode(v as Mode)} variant="outline" className="border-[var(--hairline)]">
+        <ToggleGroup
+          type="single"
+          value={mode}
+          onValueChange={(v) => {
+            if (!v) return;
+            setMode(v as Mode);
+            posthog.capture("oscillation_mode_changed", { mode: v });
+          }}
+          variant="outline"
+          className="border-[var(--hairline)]"
+        >
           <ToggleGroupItem value="regimes" className="px-3 text-xs">Regimes</ToggleGroupItem>
           <ToggleGroupItem value="30m" className="px-3 font-mono text-xs">30m</ToggleGroupItem>
           <ToggleGroupItem value="1h" className="px-3 font-mono text-xs">1h</ToggleGroupItem>
@@ -253,7 +269,10 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
               {regimes.map((rg, i) => (
                 <button
                   key={i}
-                  onClick={() => setSelected(i)}
+                  onClick={() => {
+                    setSelected(i);
+                    posthog.capture("regime_selected", { type: rg.type, duration_min: Math.round(rg.durationMin) });
+                  }}
                   title={`${rg.typeLabel} · ${rg.durationMin.toFixed(0)} min`}
                   className="group relative flex min-w-[8%] items-center justify-center border-r border-[var(--hairline)] last:border-r-0"
                   style={{

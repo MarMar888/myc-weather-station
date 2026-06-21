@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Loader } from "@/components/loader";
 
 // Stored regimes are kts-native (server logs in knots), so the Log reads in kts
 // regardless of the page unit toggle — the baked plain-English gloss is in kts.
@@ -180,11 +181,11 @@ export function RegimeLogView() {
         {shown.length} significant regime{shown.length === 1 ? "" : "s"} · structural breaks the data found over the trailing ~2 days, frozen as they pass · kts
       </p>
 
-      {shown.length === 0 ? (
+      {!loaded ? (
+        <Loader minH={200} />
+      ) : shown.length === 0 ? (
         <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed border-[var(--hairline)] px-4 text-center text-sm text-[var(--ink-faint)]">
-          {loaded
-            ? "No significant regimes logged yet — they accumulate as the wind produces real, sustained shifts."
-            : "Loading…"}
+          No significant regimes logged yet — they accumulate as the wind produces real, sustained shifts.
         </div>
       ) : (
         <div className="space-y-3">

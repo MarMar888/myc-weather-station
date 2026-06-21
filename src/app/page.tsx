@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import posthog from "posthog-js";
 import {
   Area,
   AreaChart,
@@ -19,6 +20,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
 import { PatternsView } from "@/components/patterns-view";
 import { RegimeLogView } from "@/components/regime-log-view";
+import { Loader } from "@/components/loader";
 
 // ---- types ---------------------------------------------------------------
 
@@ -239,6 +241,7 @@ function FeatureModal({ onClose }: { onClose: () => void }) {
     const body = encodeURIComponent(
       `${text.trim()}${email.trim() ? `\n\nFrom: ${email.trim()}` : ""}`,
     );
+    posthog.capture("feature_request_submitted", { has_email: !!email.trim() });
     window.open(`mailto:marleyhansenbarrett@gmail.com?subject=${subject}&body=${body}`);
     onClose();
   }
@@ -302,7 +305,9 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
 
   function handleApply() {
     if (total < 1) return;
-    onApply(Math.min(total, 2160)); // cap at 90 days
+    const capped = Math.min(total, 2160);
+    posthog.capture("custom_range_applied", { hours: capped });
+    onApply(capped);
     onClose();
   }
 
@@ -536,8 +541,11 @@ export default function Dashboard() {
   const tabBtn = (id: Tab, label: string) => (
     <button
       key={id}
-      onClick={() => setTab(id)}
-      className={`-mb-px border-b-2 px-3 py-2.5 text-sm transition-colors ${
+      onClick={() => {
+        setTab(id);
+        posthog.capture("tab_changed", { tab: id });
+      }}
+      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
         tab === id
           ? "border-[var(--accent)] text-[var(--ink)]"
           : "border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]"
@@ -607,7 +615,11 @@ export default function Dashboard() {
             <ToggleGroup
               type="single"
               value={unit}
-              onValueChange={(v) => v && setUnit(v as WindUnit)}
+              onValueChange={(v) => {
+                if (!v) return;
+                setUnit(v as WindUnit);
+                posthog.capture("wind_unit_changed", { unit: v });
+              }}
               variant="outline"
               className="border-[var(--hairline)]"
             >
@@ -622,7 +634,11 @@ export default function Dashboard() {
                 <ToggleGroup
                   type="single"
                   value={liveRanges.some((r) => r.hours === hours) ? String(hours) : ""}
-                  onValueChange={(v) => v && setHours(Number(v))}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    setHours(Number(v));
+                    posthog.capture("time_range_changed", { hours: Number(v) });
+                  }}
                   variant="outline"
                   className="border-[var(--hairline)]"
                 >
@@ -675,6 +691,8 @@ export default function Dashboard() {
           <PatternsView unit={unit} />
         ) : tab === "log" ? (
           <RegimeLogView />
+        ) : data === null && !error ? (
+          <Loader label="Loading wind data" minH={400} />
         ) : (
           <>
             {/* hero — primary wind instrument */}

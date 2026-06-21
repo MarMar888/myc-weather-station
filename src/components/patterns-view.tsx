@@ -20,6 +20,7 @@ import {
   type PSample,
   type Unit,
 } from "@/lib/patterns";
+import { Loader } from "@/components/loader";
 
 const MPH_TO_KNOTS = 0.868976;
 type Row = Record<string, number | string | null> & { observed_at: number };
@@ -335,20 +336,24 @@ export function PatternsView({ unit }: { unit: Unit }) {
         </ToggleGroup>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Wind rose" meta={`${samples.length} pts`}>
-          <WindRoseChart samples={samples} unit={unit} />
-        </Section>
-        <Section title="Records & extremes">
-          <RecordsGrid samples={samples} unit={unit} />
-        </Section>
-        <Section title="Thermal builds">
-          <ThermalsPanel samples={samples} unit={unit} />
-        </Section>
-        <Section title="Barometer → wind">
-          <BaroLagPanel samples={samples} />
-        </Section>
-      </div>
+      {!loaded ? (
+        <Loader label="Loading patterns" minH={300} />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Section title="Wind rose" meta={`${samples.length} pts`}>
+            <WindRoseChart samples={samples} unit={unit} />
+          </Section>
+          <Section title="Records & extremes">
+            <RecordsGrid samples={samples} unit={unit} />
+          </Section>
+          <Section title="Thermal builds">
+            <ThermalsPanel samples={samples} unit={unit} />
+          </Section>
+          <Section title="Barometer → wind">
+            <BaroLagPanel samples={samples} />
+          </Section>
+        </div>
+      )}
 
       {loaded && rows.length === 0 && (
         <p className="mt-4 text-sm text-[var(--ink-faint)]">No history stored yet — patterns appear once readings accumulate.</p>
