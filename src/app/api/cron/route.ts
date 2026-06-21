@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchReading } from "@/lib/weatherlink";
 import { insertReading, pruneOlderThan } from "@/lib/db";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 // Drop readings older than this on every run, so the table self-trims.
 const RETENTION_DAYS = 360;
@@ -22,6 +23,22 @@ async function handle(req: NextRequest) {
     const reading = await fetchReading();
     const inserted = await insertReading(reading);
     const pruned = await pruneOlderThan(RETENTION_DAYS);
+
+    if (inserted) {
+      const posthog = getPostHogClient();
+      posthog.capture({
+        distinctId: "cron",
+        event: "weather_reading_recorded",
+        properties: {
+          observed_at: reading.observed_at,
+          wind_speed: reading.wind_speed,
+          wind_gust_2min: reading.wind_gust_2min,
+          wind_dir: reading.wind_dir,
+          pruned,
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       recorded: true,
