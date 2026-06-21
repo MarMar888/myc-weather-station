@@ -74,7 +74,7 @@ function baroTrend(t: number | null): string {
 
 // ---- shared primitives ---------------------------------------------------
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
+const LABEL = "text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
 
 function StatRow({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (

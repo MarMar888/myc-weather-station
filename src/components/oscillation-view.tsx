@@ -26,7 +26,7 @@ const MPH_TO_KNOTS = 0.868976;
 type WindUnit = "kts" | "mph";
 type Row = Record<string, number | string | null> & { observed_at: number };
 
-const LABEL = "text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
+const LABEL = "text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-faint)]";
 const AXIS = { stroke: "var(--axis)", fontSize: 10, fontFamily: "var(--font-geist-mono)" } as const;
 const tooltipStyle = {
   background: "var(--panel-2)",
