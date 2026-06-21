@@ -15,7 +15,6 @@ import {
   YAxis,
 } from "recharts";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { CardSpotlight } from "@/components/ui/card-spotlight";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
 import { PatternsView } from "@/components/patterns-view";
@@ -51,6 +50,7 @@ function compass(deg: number | null | undefined): string {
 }
 
 const RANGES = [
+  { label: "3h", hours: 3 },
   { label: "6h", hours: 6 },
   { label: "24h", hours: 24 },
   { label: "7d", hours: 24 * 7 },
@@ -160,17 +160,11 @@ function WindCompass({ deg }: { deg: number | null }) {
         )}
         <circle cx="100" cy="100" r="4" fill="var(--ink)" />
       </svg>
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span className="mt-11 font-mono text-base tabular-nums text-[var(--ink)]">
-          {deg == null ? "—" : `${Math.round(deg)}°`}
-        </span>
-        <span className={LABEL}>{compass(deg)}</span>
-      </div>
     </div>
   );
 }
 
-const AXIS = { stroke: "var(--axis)", fontSize: 10, fontFamily: "var(--font-geist-mono)" } as const;
+const AXIS = { stroke: "var(--axis)", fontSize: 11, fontFamily: "var(--font-geist-mono)", fill: "var(--axis)" } as const;
 const tooltipStyle = {
   background: "var(--panel-2)",
   border: "1px solid var(--hairline)",
@@ -208,6 +202,176 @@ function ChartCard({
   );
 }
 
+// ---- modals --------------------------------------------------------------
+
+function Modal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  // close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-md border border-[var(--hairline)] bg-[var(--panel)] p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FeatureModal({ onClose }: { onClose: () => void }) {
+  const [text, setText] = useState("");
+  const [email, setEmail] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    const subject = encodeURIComponent("MYC Weather Station — Feature Request");
+    const body = encodeURIComponent(
+      `${text.trim()}${email.trim() ? `\n\nFrom: ${email.trim()}` : ""}`,
+    );
+    window.open(`mailto:marleyhansenbarrett@gmail.com?subject=${subject}&body=${body}`);
+    onClose();
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="mb-5 flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-faint)]">
+          Request a Feature
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="font-mono text-sm text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
+        >
+          ✕
+        </button>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Describe the feature..."
+          rows={4}
+          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-xs text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
+        />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Your email (optional)"
+          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-xs text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
+        />
+        <div className="flex items-center justify-between pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="font-mono text-[11px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--accent)] transition-colors hover:text-[var(--ink)] disabled:pointer-events-none disabled:opacity-40"
+          >
+            Send →
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function CustomRangeModal({ current, onApply, onClose }: { current: number; onApply: (h: number) => void; onClose: () => void }) {
+  const [days, setDays] = useState(Math.floor(current / 24) || "");
+  const [hrs, setHrs] = useState(current % 24 || "");
+
+  const total = (Number(days) || 0) * 24 + (Number(hrs) || 0);
+
+  function handleApply() {
+    if (total < 1) return;
+    onApply(Math.min(total, 2160)); // cap at 90 days
+    onClose();
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="mb-5 flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-faint)]">
+          Custom Range
+        </span>
+        <button
+          onClick={onClose}
+          className="font-mono text-sm text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
+        >
+          ✕
+        </button>
+      </div>
+      <p className="mb-4 font-mono text-xs text-[var(--ink-faint)]">
+        Show data for the last N days / hours. Max 90 days.
+      </p>
+      <div className="flex gap-3">
+        <label className="flex-1">
+          <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Days</span>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            value={days}
+            onChange={(e) => setDays(e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder="0"
+            className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none"
+          />
+        </label>
+        <label className="flex-1">
+          <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-faint)]">Hours</span>
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={hrs}
+            onChange={(e) => setHrs(e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder="0"
+            className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm text-[var(--ink)] focus:border-[var(--accent)] focus:outline-none"
+          />
+        </label>
+      </div>
+      {total > 0 && (
+        <p className="mt-2 font-mono text-[11px] text-[var(--ink-faint)]">
+          = {total >= 48 ? `${(total / 24).toFixed(1)} days` : `${total}h`}
+          {total > 2160 ? " (capped at 90d)" : ""}
+        </p>
+      )}
+      <div className="mt-5 flex items-center justify-between">
+        <button
+          onClick={onClose}
+          className="font-mono text-[11px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleApply}
+          disabled={total < 1}
+          className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--accent)] transition-colors hover:text-[var(--ink)] disabled:pointer-events-none disabled:opacity-40"
+        >
+          Apply →
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ---- page ----------------------------------------------------------------
 
 type Tab = "live" | "osc" | "patterns";
@@ -220,6 +384,8 @@ export default function Dashboard() {
   const [live, setLive] = useState<Row | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [featureOpen, setFeatureOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -264,8 +430,8 @@ export default function Dashboard() {
       new Intl.DateTimeFormat("en-US", {
         timeZone: "America/Chicago",
         ...(isWide
-          ? { month: "short", day: "numeric", hour: "numeric" }
-          : { hour: "numeric", minute: "2-digit" }),
+          ? { month: "numeric", day: "numeric" }
+          : { hour: "2-digit", minute: "2-digit", hour12: false }),
       }),
     [isWide],
   );
@@ -350,10 +516,13 @@ export default function Dashboard() {
 
   return (
     <>
+      {featureOpen && <FeatureModal onClose={() => setFeatureOpen(false)} />}
+      {customOpen && <CustomRangeModal current={hours} onApply={setHours} onClose={() => setCustomOpen(false)} />}
+
       <TelemetryRail title="Wind" side="left" items={windItems} />
       <TelemetryRail title="Atmosphere" side="right" items={atmoItems} />
 
-      <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8">
+      <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8">
         {/* header */}
         <header className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -384,6 +553,14 @@ export default function Dashboard() {
             <p className="mt-0.5 text-sm text-[var(--ink-soft)]">Wind & weather telemetry</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-faint)] transition-colors hover:text-[var(--accent)]"
+            >
+              Docs ↗
+            </a>
             <ThemeToggle />
             <ToggleGroup
               type="single"
@@ -399,19 +576,33 @@ export default function Dashboard() {
               ))}
             </ToggleGroup>
             {tab === "live" && (
-              <ToggleGroup
-                type="single"
-                value={String(hours)}
-                onValueChange={(v) => v && setHours(Number(v))}
-                variant="outline"
-                className="border-[var(--hairline)]"
-              >
-                {RANGES.map((r) => (
-                  <ToggleGroupItem key={r.label} value={String(r.hours)} className="px-3 font-mono text-xs">
-                    {r.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              <div className="flex items-center gap-1">
+                <ToggleGroup
+                  type="single"
+                  value={RANGES.some((r) => r.hours === hours) ? String(hours) : ""}
+                  onValueChange={(v) => v && setHours(Number(v))}
+                  variant="outline"
+                  className="border-[var(--hairline)]"
+                >
+                  {RANGES.map((r) => (
+                    <ToggleGroupItem key={r.label} value={String(r.hours)} className="px-3 font-mono text-xs">
+                      {r.label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <button
+                  onClick={() => setCustomOpen(true)}
+                  className={`rounded border px-3 py-1.5 font-mono text-xs transition-colors ${
+                    !RANGES.some((r) => r.hours === hours)
+                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "border-[var(--hairline)] text-[var(--ink-faint)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  }`}
+                >
+                  {!RANGES.some((r) => r.hours === hours)
+                    ? hours >= 48 ? `${(hours / 24).toFixed(0)}d custom` : `${hours}h custom`
+                    : "custom"}
+                </button>
+              </div>
             )}
           </div>
         </header>
@@ -442,12 +633,12 @@ export default function Dashboard() {
         ) : (
           <>
             {/* hero — primary wind instrument */}
-            <CardSpotlight className="mb-4 rounded-xl border border-[var(--hairline)] bg-[var(--panel)]">
+            <div className="mb-4 rounded-md border border-[var(--hairline)] bg-[var(--panel)]">
               <div className="flex flex-col gap-8 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <span className={LABEL}>Wind speed</span>
                   <div className="mt-2 flex items-end gap-3">
-                    <span className="font-mono text-7xl font-semibold leading-none tracking-tight text-[var(--accent)] tabular-nums sm:text-8xl">
+                    <span className="font-mono text-7xl font-semibold leading-none tracking-tight text-[var(--speed-color)] tabular-nums sm:text-8xl">
                       {w("wind_speed")}
                     </span>
                     <span className="mb-2 font-mono text-lg text-[var(--ink-faint)]">{u}</span>
@@ -482,7 +673,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-            </CardSpotlight>
+            </div>
 
             {/* instrument cluster */}
             <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg bg-[var(--hairline)] sm:grid-cols-4">
@@ -570,9 +761,23 @@ export default function Dashboard() {
 
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-[var(--hairline)] pt-4 font-mono text-[11px] text-[var(--ink-faint)]">
           <span>
-            {data?.stats.count ?? 0} readings · updates every 3 min · 360-day retention · WeatherLink → Turso
+            {data?.stats.count ?? 0} readings · new data every 3 minutes · 360-day retention
           </span>
           <span className="flex items-center gap-4">
+            <button
+              onClick={() => setFeatureOpen(true)}
+              className="transition-colors hover:text-[var(--accent)]"
+            >
+              Request a Feature
+            </button>
+            <a
+              href="https://www.weatherlink.com/embeddablePage/show/25aa5d18618f41a8894a5ba0b092df3d/summary"
+              target="_blank"
+              rel="noreferrer"
+              className="transition-colors hover:text-[var(--accent)]"
+            >
+              Source
+            </a>
             <a
               href="https://github.com/MarMar888/myc-weather-station"
               target="_blank"
