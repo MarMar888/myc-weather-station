@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import posthog from "posthog-js";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -15,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { WindDirRadar } from "@/components/wind-dir-radar";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
@@ -382,9 +385,15 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
 
 type Tab = "live" | "osc" | "patterns" | "log";
 
-export default function Dashboard() {
+function DashboardInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [tab, setTab] = useState<Tab>("live");
-  const [hours, setHours] = useState(24);
+  const [hours, setHoursState] = useState(() => {
+    const p = searchParams.get("h");
+    return p && !isNaN(Number(p)) ? Math.max(1, Math.min(2160, Number(p))) : 24;
+  });
   const [unit, setUnit] = useState<WindUnit>("kts");
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [live, setLive] = useState<Row | null>(null);
@@ -392,6 +401,13 @@ export default function Dashboard() {
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [featureOpen, setFeatureOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
+  const [pingActive, setPingActive] = useState(false);
+  const pingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setHours = useCallback((h: number) => {
+    setHoursState(h);
+    router.replace(`?h=${h}`, { scroll: false });
+  }, [router]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -427,6 +443,17 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [loadLive]);
 
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPingActive(true);
+      pingTimerRef.current = setTimeout(() => setPingActive(false), 500);
+    }, 10_000);
+    return () => {
+      clearInterval(id);
+      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
+    };
+  }, []);
+
   const current = live ?? data?.latest ?? null;
   const u = unit;
   const isWide = hours > 48;
@@ -445,7 +472,7 @@ export default function Dashboard() {
 
   const series = useMemo(() => {
     const rows = data?.rows ?? [];
-    return rows.map((r) => ({
+    const pts = rows.map((r) => ({
       t: r.observed_at,
       wind: windVal(num(r, "wind_speed"), unit),
       gust: windVal(num(r, "wind_gust_2min"), unit),
@@ -453,7 +480,20 @@ export default function Dashboard() {
       temp: num(r, "temp"),
       baro: num(r, "barometer"),
       hum: num(r, "humidity"),
+      rain: num(r, "rain_rate"),
+      trend: null as number | null,
     }));
+    const HALF = 5;
+    for (let i = 0; i < pts.length; i++) {
+      const lo = Math.max(0, i - HALF);
+      const hi = Math.min(pts.length - 1, i + HALF);
+      const vals: number[] = [];
+      for (let j = lo; j <= hi; j++) {
+        if (pts[j].wind != null) vals.push(pts[j].wind as number);
+      }
+      pts[i].trend = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    }
+    return pts;
   }, [data, unit]);
 
   const windMax = useMemo(() => {
@@ -464,6 +504,30 @@ export default function Dashboard() {
     }
     return m;
   }, [series]);
+
+  const hourRows = useMemo(() => {
+    const cutoff = Date.now() - 3_600_000;
+    return (data?.rows ?? []).filter((r) => r.observed_at >= cutoff);
+  }, [data]);
+
+  const hourStats = useMemo(() => {
+    function stats(key: string) {
+      const vals = hourRows
+        .map((r) => windVal(num(r, key), unit))
+        .filter((v): v is number => v != null);
+      if (!vals.length) return null;
+      return {
+        lo: Math.min(...vals).toFixed(1),
+        hi: Math.max(...vals).toFixed(1),
+        avg: (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1),
+      };
+    }
+    return {
+      gust2m: stats("wind_gust_2min"),
+      avg10m: stats("wind_avg_10min"),
+      avg1m: stats("wind_avg_1min"),
+    };
+  }, [hourRows, unit]);
 
   const noData = (data?.stats.count ?? 0) === 0;
 
@@ -569,7 +633,9 @@ export default function Dashboard() {
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
+                {pingActive && (
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
+                )}
                 <span className="relative inline-flex size-1.5 rounded-full bg-[var(--accent)]" />
               </span>
               <span className="text-[10px] uppercase tracking-[0.24em] text-[var(--ink-faint)]">
@@ -708,9 +774,9 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-6 flex divide-x divide-[var(--hairline)] border-y border-[var(--hairline)]">
                     {[
-                      { l: "Gust 2m", v: w("wind_gust_2min") },
-                      { l: "Avg 10m", v: w("wind_avg_10min") },
-                      { l: "Avg 1m", v: w("wind_avg_1min") },
+                      { l: "Gust 2m", v: w("wind_gust_2min"), stats: hourStats.gust2m },
+                      { l: "Avg 10m", v: w("wind_avg_10min"), stats: hourStats.avg10m },
+                      { l: "Avg 1m", v: w("wind_avg_1min"), stats: hourStats.avg1m },
                     ].map((s, i) => (
                       <div key={s.l} className={`py-3 ${i === 0 ? "pr-5" : "px-5"}`}>
                         <div className={LABEL}>{s.l}</div>
@@ -718,6 +784,11 @@ export default function Dashboard() {
                           {s.v}
                           <span className="ml-1 text-xs text-[var(--ink-faint)]">{u}</span>
                         </div>
+                        {s.stats && (
+                          <div className="mt-0.5 font-mono text-[10px] tabular-nums text-[var(--ink-faint)]">
+                            lo {s.stats.lo} · hi {s.stats.hi} · avg {s.stats.avg}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -756,7 +827,7 @@ export default function Dashboard() {
 
             {/* charts */}
             <ChartCard title={`Wind speed & gust · ${u}`} meta={`${series.length} pts`} height={300} className="mb-4">
-              <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <ComposedChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gWind" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
@@ -766,10 +837,11 @@ export default function Dashboard() {
                 <CartesianGrid stroke="var(--grid)" vertical={false} />
                 <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
                 <YAxis {...AXIS} domain={[0, Math.max(5, Math.ceil(windMax))]} allowDecimals={false} width={32} />
-                <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v, n) => [v == null ? "—" : Number(v).toFixed(1), n]} />
-                <Area type="linear" dataKey="gust" name="gust" stroke="var(--ink-faint)" strokeWidth={1} fill="none" dot={false} connectNulls isAnimationActive={false} />
-                <Area type="linear" dataKey="wind" name="wind" stroke="var(--accent)" strokeWidth={2} fill="url(#gWind)" dot={false} connectNulls isAnimationActive={false} />
-              </AreaChart>
+                <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v, n) => [v == null ? "—" : Number(v).toFixed(1), n === "trend" ? "trend (30m avg)" : n]} />
+                <Area type="monotone" dataKey="wind" name="wind" stroke="var(--accent)" strokeWidth={2} fill="url(#gWind)" dot={false} connectNulls isAnimationActive={false} />
+                <Line type="monotone" dataKey="trend" name="trend" stroke="var(--ink-faint)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                <Scatter dataKey="gust" name="gust" fill="var(--ink-soft)" opacity={0.55} isAnimationActive={false} />
+              </ComposedChart>
             </ChartCard>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -777,11 +849,20 @@ export default function Dashboard() {
                 <ScatterChart margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                   <CartesianGrid stroke="var(--grid)" />
                   <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
-                  <YAxis dataKey="dir" type="number" domain={[0, 360]} ticks={[0, 90, 180, 270, 360]} {...AXIS} width={34} />
+                  <YAxis dataKey="dir" type="number" domain={[0, 360]} ticks={[0, 90, 180, 270, 360]} {...AXIS} width={42} />
                   <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v) => [`${Math.round(Number(v))}° ${compass(Number(v))}`, "dir"]} />
                   <Scatter data={series} fill="#5eead4" isAnimationActive={false} />
                 </ScatterChart>
               </ChartCard>
+
+              <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] p-4">
+                <h3 className={`mb-3 ${LABEL}`}>Wind rose · dwell</h3>
+                <div className="flex items-center justify-center" style={{ height: 230 }}>
+                  <div className="size-[200px]">
+                    <WindDirRadar series={series} />
+                  </div>
+                </div>
+              </div>
 
               <ChartCard title="Temperature · °F">
                 <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -791,6 +872,22 @@ export default function Dashboard() {
                   <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} />
                   <Line type="linear" dataKey="temp" name="°F" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 </LineChart>
+              </ChartCard>
+
+              <ChartCard title="Rain rate · in/h">
+                <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gRain" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#60a5fa" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="var(--grid)" vertical={false} />
+                  <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={tickFmt} {...AXIS} minTickGap={48} />
+                  <YAxis {...AXIS} domain={[0, "auto"]} width={32} tickFormatter={(v) => Number(v).toFixed(2)} />
+                  <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => tickFmt(Number(t))} formatter={(v) => [Number(v).toFixed(2), "in/h"]} />
+                  <Area type="linear" dataKey="rain" name="in/h" stroke="#60a5fa" fill="url(#gRain)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                </AreaChart>
               </ChartCard>
 
               <ChartCard title="Barometric pressure · inHg">
@@ -857,5 +954,13 @@ export default function Dashboard() {
         </footer>
       </main>
     </>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense>
+      <DashboardInner />
+    </Suspense>
   );
 }
