@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import posthog from "posthog-js";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -310,7 +310,7 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
     if (total < 1) return;
     const capped = Math.min(total, 2160);
     posthog.capture("custom_range_applied", { hours: capped });
-    onApply(capped);
+    startTransition(() => onApply(capped));
     onClose();
   }
 
@@ -606,7 +606,7 @@ function DashboardInner() {
     <button
       key={id}
       onClick={() => {
-        setTab(id);
+        startTransition(() => setTab(id));
         posthog.capture("tab_changed", { tab: id });
       }}
       className={`-mb-px border-b-2 px-3 py-3 text-sm transition-colors ${
@@ -683,7 +683,7 @@ function DashboardInner() {
               value={unit}
               onValueChange={(v) => {
                 if (!v) return;
-                setUnit(v as WindUnit);
+                startTransition(() => setUnit(v as WindUnit));
                 posthog.capture("wind_unit_changed", { unit: v });
               }}
               variant="outline"
@@ -702,7 +702,7 @@ function DashboardInner() {
                   value={liveRanges.some((r) => r.hours === hours) ? String(hours) : ""}
                   onValueChange={(v) => {
                     if (!v) return;
-                    setHours(Number(v));
+                    startTransition(() => setHours(Number(v)));
                     posthog.capture("time_range_changed", { hours: Number(v) });
                   }}
                   variant="outline"
