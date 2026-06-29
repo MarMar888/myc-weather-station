@@ -48,6 +48,7 @@ function circularStd(deg: number[]): number {
 }
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 function variance(a: number[]): number {
   const n = a.length;
   if (n < 2) return 0;
@@ -149,12 +150,19 @@ function welchT(a: number[], b: number[]): number {
   return (mean(a) - mean(b)) / den;
 }
 
-/** Recursive binary segmentation on a continuous series; returns split indices. */
+/**
+ * Recursive binary segmentation on a continuous series; returns split indices.
+ * A split must be both statistically detectable (Welch t ≥ thr) AND practically
+ * meaningful (mean change ≥ minEffect, in the series' own units — degrees here).
+ * The effect gate is what stops boundary jitter from spawning near-duplicate
+ * regimes run after run.
+ */
 function detectChangePoints(
   vals: number[],
   minSeg = 5,
   thr = 3,
   maxDepth = 2,
+  minEffect = 15,
 ): number[] {
   const out: number[] = [];
   const rec = (lo: number, hi: number, depth: number) => {
@@ -165,6 +173,8 @@ function detectChangePoints(
       if (t > bestT) { bestT = t; bestK = k; }
     }
     if (bestK < 0 || bestT < thr) return;
+    const lhs = mean(vals.slice(lo, bestK)), rhs = mean(vals.slice(bestK, hi));
+    if (Math.abs(rhs - lhs) < minEffect) return; // statistically real but tactically trivial
     out.push(bestK);
     rec(lo, bestK, depth - 1);
     rec(bestK, hi, depth - 1);
@@ -206,7 +216,9 @@ export interface Regime {
   meanDir: number | null;
   meanCompass: string;
   dirStd: number;
-  amplitude: number;
+  amplitude: number; // robust 10–90 pct band of deviation (headline ±band)
+  ampP2P: number; // raw peak-to-peak (outlier-sensitive; shown in "the math" only)
+  dirUndefined: boolean; // circular σ so high the mean is meaningless (light, swirly air)
   fromBearing: number | null;
   toBearing: number | null;
   startBearing: number | null;
@@ -255,9 +267,15 @@ const TYPE_LABEL: Record<RegimeType, string> = {
 export interface RegimeOpts {
   calmCutoff: number; // in display unit
   withHurst?: boolean;
-  // Change-point detector tuning. Defaults suit the live ~3h window; the macro
-  // logger passes larger segments / more depth for day-scale regimes.
-  cp?: { minSeg?: number; thr?: number; maxDepth?: number };
+  // Change-point detector tuning. Any field left unset is self-scaled from the
+  // window span in detectRegimes (longer windows ⇒ more depth, coarser segments).
+  cp?: {
+    minSeg?: number;
+    thr?: number;
+    maxDepth?: number;
+    minEffect?: number; // ° mean change required to accept a split
+    minSegMin?: number; // minimum regime duration (min); shorter ones get merged
+  };
 }
 
 function confidenceFor(n: number): Confidence {
@@ -282,7 +300,7 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
     startT, endT, durationMin, count,
     confidence: confidenceFor(count),
     type: "insufficient", typeLabel: TYPE_LABEL.insufficient,
-    meanDir: null, meanCompass: "—", dirStd: 0, amplitude: 0,
+    meanDir: null, meanCompass: "—", dirStd: 0, amplitude: 0, ampP2P: 0, dirUndefined: false,
     fromBearing: null, toBearing: null, startBearing: null, endBearing: null,
     netShift: 0, shiftRate: 0, trendT: 0, trendP: 1,
     halfLifeMin: null, meanReverting: null, periodMin: null, reversals: 0, hurst: null,
@@ -315,11 +333,18 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   const times = dirPts.map((p) => p.t);
   const meanDir = circularMean(dirs);
   const dirStd = circularStd(dirs);
+  const dirUndefined = dirStd > 60; // mean direction is meaningless in this much scatter
   const uw = unwrap(dirs);
   const muU = mean(uw);
   const centered = uw.map((v) => v - muU);
   const minDev = Math.min(...centered), maxDev = Math.max(...centered);
-  const amplitude = maxDev - minDev;
+  const ampP2P = maxDev - minDev; // raw peak-to-peak: one excursion blows it up, grows with window
+  // Robust amplitude: 10th–90th percentile band of the centered deviations. Bounded
+  // by the bulk of the data, stable across window length — this is the headline ±band.
+  const sortedDev = [...centered].sort((a, b) => a - b);
+  const pctl = (p: number) =>
+    sortedDev[Math.min(sortedDev.length - 1, Math.max(0, Math.round(p * (sortedDev.length - 1))))];
+  const amplitude = Math.max(0, pctl(0.9) - pctl(0.1));
 
   const reg = linreg(times, uw);
   const shiftRate = reg.slope * 3_600_000;
@@ -338,29 +363,36 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   const meanReverting = count >= 20 ? ou.lambda > 1e-12 : null;
   const hurst = opts.withHurst ? hurstRS(uw) : null;
 
-  // classify
-  const sigShift = count >= 10 && Math.abs(reg.t) > 2 && Math.abs(netShift) > 8;
+  // classify. A "trend" on top of >60° circular scatter is an unwrapping artifact,
+  // not a shift you can favour — swirly air is never called veering/backing.
+  const sigShift = count >= 10 && !dirUndefined && Math.abs(reg.t) > 2 && Math.abs(netShift) > 8;
   let type: RegimeType;
   if (sigShift) type = netShift > 0 ? "veering" : "backing";
   else if (amplitude < 8) type = "steady";
   else type = "oscillating";
 
-  // significance ("conviction"), 0..1: confidence × (effect size + realness).
-  const confW = count >= 20 ? 1 : count >= 10 ? 0.6 : 0.3;
-  const effect = Math.max(Math.abs(netShift), amplitude * 0.7, Math.abs(base.speedRate) * 10);
-  const effScore = Math.min(1, effect / 40); // ~40° (or equiv) reads as a big move
-  const realScore =
+  // significance ("conviction"), 0..1. Honest in light air: a big swing in 1.5 kt
+  // is meaningless (you can't even sail it), so wind speed gates everything. For
+  // oscillators we reward a *clean, periodic, mean-reverting* swing — not a big
+  // swirly range. For trends we require both statistical and practical shift.
+  const speedW = clamp01(((base.speedMean ?? 0) - 2) / 4); // 0 at ≤2, full credit at ≥6 (display unit)
+  const confW = count >= 20 ? 1 : count >= 10 ? 0.7 : 0.4;
+  const hasPeriod = periodMin != null ? 1 : 0;
+  const ouW = meanReverting && ou.halfLifeMin != null ? 1 : 0;
+  const coherence = 0.5 * hasPeriod + 0.5 * ouW;
+  const trendReal = Math.min(1, Math.abs(reg.t) / 4) * Math.min(1, Math.abs(netShift) / 20);
+  const effScore = Math.min(1, amplitude / 40); // amplitude = robust band
+  const significance =
     type === "veering" || type === "backing"
-      ? Math.min(1, Math.abs(reg.t) / 4)
+      ? speedW * confW * (0.7 * trendReal + 0.3 * effScore)
       : type === "oscillating"
-        ? Math.min(1, amplitude / 30)
-        : 0; // steady → not significant
-  const significance = confW * (0.6 * effScore + 0.4 * realScore);
+        ? speedW * confW * (0.6 * coherence + 0.4 * effScore)
+        : 0; // steady / calm / insufficient → not significant
 
   // tactical "now & next": where the latest reading sits in the swing, and a
   // plain trend extrapolation (only when the trend is statistically real).
   const nowDev = centered[count - 1];
-  const frac = amplitude > 0 ? (nowDev - minDev) / amplitude : 0.5;
+  const frac = ampP2P > 0 ? (nowDev - minDev) / ampP2P : 0.5; // position within the full swing
   const nowPos: "ccw" | "mid" | "cw" = frac > 0.66 ? "cw" : frac < 0.34 ? "ccw" : "mid";
   const projAt = (mins: number) => (((uw[count - 1] + reg.slope * mins * 60_000) % 360) + 360) % 360;
   const proj15 = sigShift ? projAt(15) : null;
@@ -374,8 +406,9 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
 
   const math: { label: string; value: string }[] = [
     { label: "samples (n)", value: `${count}` },
-    { label: "mean dir", value: `${Math.round(meanDir)}° (${compass16(meanDir)})` },
+    { label: "mean dir", value: dirUndefined ? "swirly / undefined" : `${Math.round(meanDir)}° (${compass16(meanDir)})` },
     { label: "circular σ", value: `${dirStd.toFixed(1)}°` },
+    { label: "amp band / p-p", value: `±${(amplitude / 2).toFixed(0)}° · ${ampP2P.toFixed(0)}° p-p` },
     { label: "trend slope", value: `${shiftRate >= 0 ? "+" : ""}${shiftRate.toFixed(1)}°/hr` },
     { label: "trend t / p", value: `t=${reg.t.toFixed(2)}, p≈${reg.p.toFixed(3)}` },
     { label: "half-life", value: ou.halfLifeMin ? `${ou.halfLifeMin.toFixed(1)} min` : count >= 20 ? "—  (not reverting)" : "n<20" },
@@ -387,7 +420,7 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   return {
     ...base,
     type, typeLabel: TYPE_LABEL[type],
-    meanDir, meanCompass: compass16(meanDir), dirStd, amplitude,
+    meanDir, meanCompass: compass16(meanDir), dirStd, amplitude, ampP2P, dirUndefined,
     fromBearing: ((meanDir + minDev) % 360 + 360) % 360,
     toBearing: ((meanDir + maxDev) % 360 + 360) % 360,
     startBearing: dirs[0], endBearing: dirs[count - 1],
@@ -398,25 +431,66 @@ export function summarizeRegime(samples: WindSample[], opts: RegimeOpts): Regime
   };
 }
 
+const MERGE_DIR_DEG = 20; // adjacent same-type regimes whose means sit within this collapse to one
+
+/**
+ * Collapse a contiguous list of sample-slices: repeatedly merge the single most
+ * warranted adjacent pair — either same-type with near-identical mean (a
+ * "look-alike"), or one too short to stand alone (absorbed into its closest
+ * neighbour). Runs to convergence. This is the safety net that guarantees no two
+ * adjacent near-duplicate regimes survive — the root cause of the old Log mess.
+ */
+function mergeSlices(slices: WindSample[][], opts: RegimeOpts, minSegMin: number): WindSample[][] {
+  let cur = slices;
+  for (let pass = 0; pass < 24 && cur.length > 1; pass++) {
+    const sum = cur.map((s) => summarizeRegime(s, opts));
+    let bestI = -1, bestCost = Infinity;
+    for (let i = 0; i < cur.length - 1; i++) {
+      const a = sum[i], b = sum[i + 1];
+      const dmean = a.meanDir != null && b.meanDir != null ? Math.abs(angDiff(a.meanDir, b.meanDir)) : 180;
+      const lookAlike = a.type === b.type && dmean <= MERGE_DIR_DEG;
+      const tooShort = a.durationMin < minSegMin || b.durationMin < minSegMin;
+      if (!lookAlike && !tooShort) continue;
+      if (dmean < bestCost) { bestCost = dmean; bestI = i; } // merge the most-similar eligible pair
+    }
+    if (bestI < 0) break;
+    cur = [...cur.slice(0, bestI), cur[bestI].concat(cur[bestI + 1]), ...cur.slice(bestI + 2)];
+  }
+  return cur;
+}
+
 /** Split the recent samples into data-determined regimes (oldest → newest). */
 export function detectRegimes(samples: WindSample[], opts: RegimeOpts): Regime[] {
   const sorted = samples.slice().sort((a, b) => a.t - b.t);
   const dirPts = sorted.filter((s) => s.dir != null) as { t: number; dir: number }[];
   if (dirPts.length < 5) return [summarizeRegime(sorted, opts)];
 
-  const uw = unwrap(dirPts.map((p) => p.dir));
+  // Self-scale the detector to the window span unless the caller pins a value: a
+  // longer window gets more recursion depth (so more regimes are *possible*) but a
+  // coarser minimum segment and a longer min-duration, so a quiet 12h stretch never
+  // shatters into noise.
+  const spanH = Math.max((dirPts[dirPts.length - 1].t - dirPts[0].t) / 3_600_000, 0.01);
+  const perHour = dirPts.length / spanH;
   const cp = opts.cp ?? {};
-  const cps = detectChangePoints(uw, cp.minSeg ?? 5, cp.thr ?? 3, cp.maxDepth ?? 2); // indices into dirPts
+  const minSeg = cp.minSeg ?? Math.max(5, Math.round(perHour * 0.5)); // ~½h of samples
+  const thr = cp.thr ?? 3;
+  const maxDepth = cp.maxDepth ?? Math.max(2, Math.min(6, Math.ceil(Math.log2(Math.max(2, spanH))) + 2));
+  const minEffect = cp.minEffect ?? 15;
+  const minSegMin = cp.minSegMin ?? (spanH > 6 ? 45 : 20);
+
+  const uw = unwrap(dirPts.map((p) => p.dir));
+  const cps = detectChangePoints(uw, minSeg, thr, maxDepth, minEffect); // indices into dirPts
   const bounds = [0, ...cps, dirPts.length];
 
-  const regimes: Regime[] = [];
+  const slices: WindSample[][] = [];
   for (let i = 0; i < bounds.length - 1; i++) {
     const t0 = dirPts[bounds[i]].t;
     const t1 = i === bounds.length - 2 ? Infinity : dirPts[bounds[i + 1]].t;
     const slice = sorted.filter((s) => s.t >= t0 && (t1 === Infinity ? true : s.t < t1));
-    if (slice.length) regimes.push(summarizeRegime(slice, opts));
+    if (slice.length) slices.push(slice);
   }
-  return regimes;
+
+  return mergeSlices(slices, opts, minSegMin).map((s) => summarizeRegime(s, opts));
 }
 
 const r = (n: number) => Math.round(n);
@@ -438,11 +512,17 @@ export function glossesFor(a: Regime, unitLabel: string): string[] {
       `Persistent ${side} shift: ${compass16(a.startBearing)} ${r(a.startBearing!)}° → ${compass16(a.endBearing)} ${r(a.endBearing!)}°, ${a.netShift > 0 ? "+" : ""}${r(a.netShift)}° over ${a.durationMin.toFixed(0)} min (${a.shiftRate > 0 ? "+" : ""}${r(a.shiftRate)}°/hr). Statistically real (t=${a.trendT.toFixed(1)}, p≈${a.trendP.toFixed(2)}) — favour the new side.`,
     );
   } else if (a.type === "oscillating") {
-    out.push(
-      `Oscillating ±${half}° around ${a.meanCompass} (${r(a.meanDir!)}°), ${compass16(a.fromBearing)} ${r(a.fromBearing!)}° to ${compass16(a.toBearing)} ${r(a.toBearing!)}°. No real trend (t=${a.trendT.toFixed(1)}).`,
-    );
-    if (a.halfLifeMin) out.push(`Mean-reverting: a header decays halfway back in ~${a.halfLifeMin.toFixed(1)} min${a.periodMin ? `, full swings ~${a.periodMin.toFixed(0)} min` : ""}. Play the shifts.`);
-    else if (a.periodMin) out.push(`Swinging through its mean about every ${(a.periodMin / 2).toFixed(0)} min (${a.reversals} reversals).`);
+    if (a.dirUndefined) {
+      out.push(
+        `Swirly / undefined — circular σ ${a.dirStd.toFixed(0)}°, swinging across more than half the compass around a nominal ${a.meanCompass}. Light, shifty air; no reliable mean to play.`,
+      );
+    } else {
+      out.push(
+        `Oscillating ±${half}° around ${a.meanCompass} (${r(a.meanDir!)}°), ${compass16(a.fromBearing)} ${r(a.fromBearing!)}° to ${compass16(a.toBearing)} ${r(a.toBearing!)}°. No real trend (t=${a.trendT.toFixed(1)}).`,
+      );
+      if (a.halfLifeMin) out.push(`Mean-reverting: a header decays halfway back in ~${a.halfLifeMin.toFixed(1)} min${a.periodMin ? `, full swings ~${a.periodMin.toFixed(0)} min` : ""}. Play the shifts.`);
+      else if (a.periodMin) out.push(`Swinging through its mean about every ${(a.periodMin / 2).toFixed(0)} min (${a.reversals} reversals).`);
+    }
   } else {
     out.push(`Steady from ${a.meanCompass} (${r(a.meanDir!)}°), holding within ±${half}° for ${a.durationMin.toFixed(0)} min.`);
   }
@@ -475,6 +555,12 @@ export function glossesFor(a: Regime, unitLabel: string): string[] {
 export function tacticalReadout(a: Regime): { now: string; next: string } | null {
   if (a.type === "calm" || a.type === "insufficient" || a.nowBearing == null || a.meanDir == null) {
     return null;
+  }
+  if (a.dirUndefined && a.type !== "veering" && a.type !== "backing") {
+    return {
+      now: `Now ${compass16(a.nowBearing)} ${r(a.nowBearing)}° — but direction is swirling across the compass (σ ${a.dirStd.toFixed(0)}°).`,
+      next: `Too shifty to commit to a side — wait for the breeze to fill and settle before playing it.`,
+    };
   }
   const posWord =
     a.nowPos === "cw"

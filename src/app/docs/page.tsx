@@ -106,19 +106,26 @@ export default function DocsPage() {
       </section>
 
       <section id="oscillation" className="mb-10 space-y-4 scroll-mt-20">
-        <h2 className="text-[10px] uppercase tracking-[0.2em] text-[var(--ink-faint)]">Oscillation Analysis</h2>
+        <h2 className="text-[10px] uppercase tracking-[0.2em] text-[var(--ink-faint)]">Trends &amp; Forecast</h2>
         <p className="text-sm leading-7 text-[var(--ink-soft)]">
-          The data picks the time periods, not you. Change-point detection splits the last 3 hours
-          into <span className="text-[var(--ink)]">regimes</span> wherever the wind&apos;s behaviour
-          actually changes; each regime is classified with quantitative time-series stats —
-          mean-reversion vs trend, Ornstein–Uhlenbeck half-life, and trend significance — and every
-          statistic is gated on sample size so small-n noise is never dressed up as a finding.
+          The data picks the time periods, not you. Change-point detection splits a selectable
+          window (3 / 6 / 12 h, default 12 h) into <span className="text-[var(--ink)]">regimes</span>{" "}
+          wherever the wind&apos;s behaviour actually changes — and a split has to be both
+          statistically real and a meaningful directional change, so boundary jitter never spawns
+          duplicate regimes. Each regime is classified with quantitative time-series stats:
+          mean-reversion vs trend, Ornstein–Uhlenbeck half-life, and trend significance. Amplitude is
+          a robust 10–90 percentile band (not raw peak-to-peak), and conviction is speed-gated, so a
+          big swing in 2-knot air — where direction is meaningless — reads as low conviction, not high.
         </p>
         <p className="text-sm leading-7 text-[var(--ink-soft)]">
-          The fixed 30m / 1h / Day lenses are optional and may straddle regimes. The{" "}
-          <span className="text-[var(--ink)]">Now &amp; next</span> readout on the current regime
-          shows where the wind sits in its swing and the higher-odds next move; any projection is a
-          plain extrapolation of the fitted trend, shown only when that trend is statistically real.
+          The <span className="text-[var(--ink)]">What&apos;s next</span> readout blends a few legible
+          signals: the momentum of the current shift (eased over the hour — winds rarely keep turning
+          one way), the next header/lift timing for an oscillation, and this station&apos;s own
+          history (a recurring afternoon thermal, a barometer that leads the wind, or a multi-hour
+          directional walk that smells like a front). It is heuristics, not a model, and every claim
+          is gated on having enough data. The fixed 30m / 1h / Day lenses are optional and may
+          straddle regimes. The <span className="text-[var(--ink)]">Log</span> tab shows the same
+          regimes over a longer window (48 h / 7 d), recomputed clean from raw readings each time.
         </p>
       </section>
 
