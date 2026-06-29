@@ -924,7 +924,7 @@ function DashboardInner() {
             {data?.stats.count ?? 0} readings · new data every 3 minutes · 360-day retention
             {process.env.NEXT_PUBLIC_APP_VERSION ? ` · v${process.env.NEXT_PUBLIC_APP_VERSION}` : ""}
           </span>
-          <span className="flex items-center gap-4">
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <button
               onClick={() => setFeatureOpen(true)}
               className="py-1 transition-colors hover:text-[var(--accent)]"
