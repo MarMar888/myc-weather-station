@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchReading } from "@/lib/weatherlink";
 import { insertReading, pruneOlderThan } from "@/lib/db";
 import { evaluatePipelineHealth } from "@/lib/alerts";
-import { runRegimeLog } from "@/lib/regime-log";
 import { getPostHogClient } from "@/lib/posthog-server";
 
 // Drop readings older than this on every run, so the table self-trims.
@@ -27,8 +26,6 @@ async function handle(req: NextRequest) {
     const pruned = await pruneOlderThan(RETENTION_DAYS);
     // Pipeline-health check runs every poll but never blocks or fails the extract.
     const health = await evaluatePipelineHealth().catch(() => null);
-    // Macro regime detection + logging; guarded so it never fails the extract.
-    const regimes = await runRegimeLog().catch(() => null);
 
     if (inserted) {
       const posthog = getPostHogClient();
@@ -51,7 +48,6 @@ async function handle(req: NextRequest) {
       inserted, // false when this observation was already stored
       pruned, // rows deleted for being older than RETENTION_DAYS
       health, // { configured, status, sent }
-      regimes, // { detected, logged }
       observed_at: reading.observed_at,
       wind_speed: reading.wind_speed,
       wind_gust_2min: reading.wind_gust_2min,

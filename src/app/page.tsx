@@ -668,7 +668,7 @@ export default function Dashboard() {
         {/* tabs */}
         <nav className="mb-6 flex gap-1 border-b border-[var(--hairline)]">
           {tabBtn("live", "Live")}
-          {tabBtn("osc", "Oscillation")}
+          {tabBtn("osc", "Trends")}
           {tabBtn("patterns", "Patterns")}
           {tabBtn("log", "Log")}
         </nav>

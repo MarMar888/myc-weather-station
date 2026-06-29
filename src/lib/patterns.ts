@@ -18,7 +18,7 @@ export interface PSample {
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 /** Hour-of-day (0–23) in US Central, the club's local time. */
-function ctHour(t: number): number {
+export function ctHour(t: number): number {
   const h = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
     hour: "numeric",

@@ -32,34 +32,10 @@ ${numericCols},
       active INTEGER NOT NULL DEFAULT 0,
       last_sent INTEGER NOT NULL DEFAULT 0
     );
-    CREATE TABLE IF NOT EXISTS regimes (
-      start_t INTEGER PRIMARY KEY,
-      end_t INTEGER NOT NULL,
-      closed INTEGER NOT NULL DEFAULT 0,
-      type TEXT,
-      type_label TEXT,
-      confidence TEXT,
-      significance REAL,
-      duration_min REAL,
-      count INTEGER,
-      mean_dir REAL,
-      amplitude REAL,
-      net_shift REAL,
-      shift_rate REAL,
-      trend_t REAL,
-      trend_p REAL,
-      half_life_min REAL,
-      period_min REAL,
-      hurst REAL,
-      speed_mean REAL,
-      speed_min REAL,
-      speed_max REAL,
-      gust_factor REAL,
-      speed_rate REAL,
-      gloss TEXT,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_regimes_start ON regimes (start_t);
+    -- Regimes are now computed on read from raw readings (see lib/regime-log.ts),
+    -- so the old accumulating table is retired. Drop it to clear the overlapping
+    -- near-duplicate rows it built up; nothing reads it any more.
+    DROP TABLE IF EXISTS regimes;
   `;
   // executeMultiple runs the statements sequentially.
   _schemaReady = db()
@@ -193,38 +169,6 @@ export interface RegimeRow {
   speed_rate: number | null;
   gloss: string | null;
   updated_at: number;
-}
-
-const REGIME_COLS = [
-  "start_t", "end_t", "closed", "type", "type_label", "confidence", "significance",
-  "duration_min", "count", "mean_dir", "amplitude", "net_shift", "shift_rate",
-  "trend_t", "trend_p", "half_life_min", "period_min", "hurst",
-  "speed_mean", "speed_min", "speed_max", "gust_factor", "speed_rate", "gloss", "updated_at",
-] as const;
-
-/** Insert or update one logged regime, keyed on its start timestamp. */
-export async function upsertRegime(row: RegimeRow): Promise<void> {
-  await ensureSchema();
-  const placeholders = REGIME_COLS.map(() => "?").join(", ");
-  const updates = REGIME_COLS.filter((c) => c !== "start_t")
-    .map((c) => `${c} = excluded.${c}`)
-    .join(", ");
-  await db().execute({
-    sql: `INSERT INTO regimes (${REGIME_COLS.join(", ")}) VALUES (${placeholders})
-          ON CONFLICT(start_t) DO UPDATE SET ${updates}`,
-    args: REGIME_COLS.map((c) => (row as unknown as Record<string, number | string | null>)[c] ?? null),
-  });
-}
-
-/** Most recent logged regimes (newest first), optionally above a significance floor. */
-export async function getRegimes(limit = 200, minSignificance = 0): Promise<RegimeRow[]> {
-  await ensureSchema();
-  const res = await db().execute({
-    sql: `SELECT ${REGIME_COLS.join(", ")} FROM regimes
-          WHERE significance >= ? ORDER BY start_t DESC LIMIT ?`,
-    args: [minSignificance, limit],
-  });
-  return res.rows as unknown as RegimeRow[];
 }
 
 export async function getStats(): Promise<{

@@ -118,16 +118,22 @@ function RegimeCard({ r, fmt }: { r: RegimeRow; fmt: Intl.DateTimeFormat }) {
 }
 
 type Floor = "all" | "notable" | "strong";
-const FLOORS: Record<Floor, number> = { all: 0, notable: 0.45, strong: 0.6 };
+// Conviction is now speed-gated (light air ≈ 0), so floors sit a touch lower than
+// the old amplitude-only scale.
+const FLOORS: Record<Floor, number> = { all: 0, notable: 0.35, strong: 0.55 };
+
+type Win = "48h" | "7d";
+const WIN_HOURS: Record<Win, number> = { "48h": 48, "7d": 168 };
 
 export function RegimeLogView() {
   const [rows, setRows] = useState<RegimeRow[]>([]);
   const [floor, setFloor] = useState<Floor>("all");
+  const [win, setWin] = useState<Win>("48h");
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/regimes?limit=300", { cache: "no-store" });
+      const res = await fetch(`/api/regimes?hours=${WIN_HOURS[win]}`, { cache: "no-store" });
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
@@ -135,7 +141,7 @@ export function RegimeLogView() {
     } catch {
       /* keep last good */
     }
-  }, []);
+  }, [win]);
 
   useEffect(() => {
     load();
@@ -164,21 +170,33 @@ export function RegimeLogView() {
         >
           How this works ↗
         </a>
-        <ToggleGroup
-          type="single"
-          value={floor}
-          onValueChange={(v) => v && setFloor(v as Floor)}
-          variant="outline"
-          className="border-[var(--hairline)]"
-        >
-          <ToggleGroupItem value="all" className="px-3 text-xs">All</ToggleGroupItem>
-          <ToggleGroupItem value="notable" className="px-3 text-xs">Notable</ToggleGroupItem>
-          <ToggleGroupItem value="strong" className="px-3 text-xs">Strong</ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex flex-wrap items-center gap-2">
+          <ToggleGroup
+            type="single"
+            value={win}
+            onValueChange={(v) => v && setWin(v as Win)}
+            variant="outline"
+            className="border-[var(--hairline)]"
+          >
+            <ToggleGroupItem value="48h" className="px-3 font-mono text-xs">48h</ToggleGroupItem>
+            <ToggleGroupItem value="7d" className="px-3 font-mono text-xs">7d</ToggleGroupItem>
+          </ToggleGroup>
+          <ToggleGroup
+            type="single"
+            value={floor}
+            onValueChange={(v) => v && setFloor(v as Floor)}
+            variant="outline"
+            className="border-[var(--hairline)]"
+          >
+            <ToggleGroupItem value="all" className="px-3 text-xs">All</ToggleGroupItem>
+            <ToggleGroupItem value="notable" className="px-3 text-xs">Notable</ToggleGroupItem>
+            <ToggleGroupItem value="strong" className="px-3 text-xs">Strong</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
 
       <p className="mb-4 font-mono text-[11px] text-[var(--ink-faint)]">
-        {shown.length} significant regime{shown.length === 1 ? "" : "s"} · structural breaks the data found over the trailing ~2 days, frozen as they pass · kts
+        {shown.length} significant regime{shown.length === 1 ? "" : "s"} · clean, non-overlapping breaks recomputed from the last {win === "7d" ? "7 days" : "48 h"} · kts
       </p>
 
       {!loaded ? (
