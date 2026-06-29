@@ -23,6 +23,7 @@ import {
   type WindSample,
 } from "@/lib/oscillation";
 import { Loader } from "@/components/loader";
+import { WindDirRadar } from "@/components/wind-dir-radar";
 
 const MPH_TO_KNOTS = 0.868976;
 type WindUnit = "kts" | "mph";
@@ -126,23 +127,46 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
       )}
 
       {hasChart && (
-        <div className="mt-3 h-40">
-          <div className={`mb-1 ${LABEL}`}>Direction vs mean · deg</div>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <LineChart data={a.series} margin={{ top: 6, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid stroke="var(--grid)" vertical={false} />
-              <XAxis dataKey="t" tickFormatter={(t) => timeFmt.format(new Date(t))} {...AXIS} minTickGap={44} />
-              <YAxis domain={[-m, m]} ticks={[-m, 0, m]} {...AXIS} width={34} />
-              <ReferenceLine y={0} stroke="var(--axis)" strokeDasharray="2 2" />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                labelFormatter={(t) => timeFmt.format(new Date(Number(t)))}
-                formatter={(v, n) => [`${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(0)}°`, n === "trend" ? "trend" : "dev"]}
-              />
-              <Line dataKey="trend" stroke="var(--ink-faint)" strokeWidth={1} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
-              <Line dataKey="dev" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="mt-3 flex gap-4">
+          <div className="size-[148px] shrink-0">
+            <WindDirRadar
+              series={a.series.map((p) => ({ dir: ((a.meanDir! + p.dev) % 360 + 360) % 360 }))}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className={`mb-1 ${LABEL}`}>Wind direction · deg</div>
+            <div className="h-[136px]">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <LineChart data={a.series} margin={{ top: 6, right: 8, left: -8, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--grid)" vertical={false} />
+                  <XAxis dataKey="t" tickFormatter={(t) => timeFmt.format(new Date(t))} {...AXIS} minTickGap={44} />
+                  <YAxis
+                    domain={[-m, m]}
+                    ticks={[-m, Math.round(-m / 2), 0, Math.round(m / 2), m]}
+                    tickFormatter={(v) => `${Math.round(((a.meanDir! + Number(v)) % 360 + 360) % 360)}°`}
+                    {...AXIS}
+                    width={42}
+                  />
+                  <ReferenceLine
+                    y={0}
+                    stroke="var(--axis)"
+                    strokeDasharray="2 2"
+                    label={{ value: `mean ${a.meanCompass}`, position: "insideTopLeft", fontSize: 9, fill: "var(--ink-faint)", fontFamily: "var(--font-geist-mono)" }}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={(t) => timeFmt.format(new Date(Number(t)))}
+                    formatter={(v, n) => [
+                      `${Math.round(((a.meanDir! + Number(v)) % 360 + 360) % 360)}° (${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(0)}°)`,
+                      n === "trend" ? "trend" : "dir",
+                    ]}
+                  />
+                  <Line dataKey="trend" stroke="var(--ink-faint)" strokeWidth={1} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+                  <Line dataKey="dev" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       )}
 
