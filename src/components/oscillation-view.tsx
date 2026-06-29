@@ -71,7 +71,7 @@ function ForecastCard({ f }: { f: Forecast }) {
   return (
     <div className="mb-4 rounded-lg border border-[var(--accent)]/50 bg-[color-mix(in_oklab,var(--accent)_10%,transparent)] p-4">
       <div className="mb-2 flex items-center gap-2">
-        <span className={LABEL} style={{ color: "var(--accent)" }}>
+        <span className={LABEL} style={{ color: "var(--ink)" }}>
           What&apos;s next
         </span>
         <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONF_CLS[f.nearConfidence]}`}>
@@ -133,7 +133,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
 
       {tactical && (
         <div className="mb-3 rounded-md border border-[var(--accent)]/40 bg-[color-mix(in_oklab,var(--accent)_8%,transparent)] p-3">
-          <div className={`mb-1.5 ${LABEL}`} style={{ color: "var(--accent)" }}>
+          <div className={`mb-1.5 ${LABEL}`} style={{ color: "var(--ink)" }}>
             Now &amp; next
           </div>
           <p className="text-sm font-medium leading-snug text-[var(--ink)]">{tactical.now}</p>
