@@ -224,7 +224,7 @@ function Modal({ onClose, children }: { onClose: () => void; children: React.Rea
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-md border border-[var(--hairline)] bg-[var(--panel)] p-6 shadow-2xl"
+        className="relative mx-4 w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-md border border-[var(--hairline)] bg-[var(--panel)] p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -270,14 +270,14 @@ function FeatureModal({ onClose }: { onClose: () => void }) {
           onChange={(e) => setText(e.target.value)}
           placeholder="Describe the feature..."
           rows={4}
-          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-xs text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
+          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2.5 font-mono text-sm text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
         />
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Your email (optional)"
-          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2 font-mono text-xs text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
+          className="w-full rounded border border-[var(--hairline)] bg-[var(--panel-2)] px-3 py-2.5 font-mono text-sm text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:border-[var(--accent)] focus:outline-none"
         />
         <div className="flex items-center justify-between pt-1">
           <button
@@ -609,7 +609,7 @@ function DashboardInner() {
         setTab(id);
         posthog.capture("tab_changed", { tab: id });
       }}
-      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+      className={`-mb-px border-b-2 px-3 py-3 text-sm transition-colors ${
         tab === id
           ? "border-[var(--accent)] text-[var(--ink)]"
           : "border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]"
@@ -716,7 +716,7 @@ function DashboardInner() {
                 </ToggleGroup>
                 <button
                   onClick={() => setCustomOpen(true)}
-                  className={`rounded border px-3 py-1.5 font-mono text-xs transition-colors ${
+                  className={`rounded border px-3 py-2 font-mono text-xs transition-colors ${
                     !RANGES.some((r) => r.hours === hours)
                       ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
                       : "border-[var(--hairline)] text-[var(--ink-faint)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
@@ -778,14 +778,14 @@ function DashboardInner() {
                       { l: "Avg 10m", v: w("wind_avg_10min"), stats: hourStats.avg10m },
                       { l: "Avg 1m", v: w("wind_avg_1min"), stats: hourStats.avg1m },
                     ].map((s, i) => (
-                      <div key={s.l} className={`py-3 ${i === 0 ? "pr-5" : "px-5"}`}>
+                      <div key={s.l} className={`py-3 ${i === 0 ? "pr-3 sm:pr-5" : "px-3 sm:px-5"}`}>
                         <div className={LABEL}>{s.l}</div>
                         <div className="mt-1 font-mono text-lg tabular-nums text-[var(--ink)]">
                           {s.v}
                           <span className="ml-1 text-xs text-[var(--ink-faint)]">{u}</span>
                         </div>
                         {s.stats && (
-                          <div className="mt-0.5 font-mono text-[10px] tabular-nums text-[var(--ink-faint)]">
+                          <div className="mt-0.5 font-mono text-xs tabular-nums text-[var(--ink-faint)]">
                             lo {s.stats.lo} · hi {s.stats.hi} · avg {s.stats.avg}
                           </div>
                         )}
@@ -796,7 +796,7 @@ function DashboardInner() {
 
                 <div className="flex items-center gap-5">
                   <WindCompass deg={num(current, "wind_dir")} />
-                  <div className="hidden sm:block">
+                  <div>
                     <span className={LABEL}>From</span>
                     <div className="mt-1 font-mono text-2xl tabular-nums text-[var(--ink)]">
                       {compass(num(current, "wind_dir"))}
