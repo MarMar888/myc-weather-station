@@ -1,0 +1,14 @@
+# Interim clustering baseline (train.py) + gradient-boosted forecaster baseline
+numpy>=1.26
+scikit-learn>=1.4
+
+# Layers 1–2: covariate-dependent HSMM (the principled replacement for
+# clustering+Markov — matches arXiv 2109.09949, the Mendota-buoy precedent).
+# Bayesian version:
+# numpyro>=0.15
+# jax>=0.4
+
+# Layer 3: deep shift-forecaster → ONNX
+# torch>=2.2
+# onnx>=1.16
+# onnxruntime>=1.18

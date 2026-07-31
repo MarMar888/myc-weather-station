@@ -11,6 +11,7 @@
 
 import { detectRegimes, glossesFor, type Regime, type WindSample } from "./oscillation";
 import { getHistory, upsertRegime, type HistoryRow, type RegimeRow } from "./db";
+import { DEFAULT_STATION, type StationId } from "./stations";
 
 const MPH_TO_KNOTS = 0.868976;
 
@@ -39,8 +40,9 @@ const num = (r: HistoryRow, k: string): number | null =>
   typeof r[k] === "number" ? (r[k] as number) : null;
 const kts = (mph: number | null): number | null => (mph == null ? null : mph * MPH_TO_KNOTS);
 
-function toRow(a: Regime, closed: boolean, now: number): RegimeRow {
+function toRow(a: Regime, closed: boolean, now: number, source: StationId): RegimeRow {
   return {
+    source,
     start_t: Math.round(a.startT),
     end_t: Math.round(a.endT),
     closed: closed ? 1 : 0,
@@ -80,13 +82,15 @@ export interface RegimeLogResult {
  * window boundary, not a real break, so its start drifts as the window slides);
  * it was already logged when it was interior.
  */
-export async function runRegimeLog(): Promise<RegimeLogResult> {
+export async function runRegimeLog(
+  source: StationId = DEFAULT_STATION,
+): Promise<RegimeLogResult> {
   const cfg = regimeLogConfig();
   const now = Date.now();
 
   let rows: HistoryRow[];
   try {
-    rows = await getHistory(cfg.horizonHours);
+    rows = await getHistory(cfg.horizonHours, source);
   } catch {
     return { detected: 0, logged: 0 };
   }
@@ -116,7 +120,7 @@ export async function runRegimeLog(): Promise<RegimeLogResult> {
     if (a.durationMin < cfg.minDurationMin) continue;
     if (a.count < cfg.minSamples) continue;
     try {
-      await upsertRegime(toRow(a, !isOpen, now));
+      await upsertRegime(toRow(a, !isOpen, now, source));
       logged++;
     } catch {
       /* one bad upsert shouldn't abort the rest */

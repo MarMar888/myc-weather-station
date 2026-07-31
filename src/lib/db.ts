@@ -1,5 +1,6 @@
 import { createClient, type Client } from "@libsql/client";
 import { NUMERIC_COLUMNS, type Reading } from "./weatherlink";
+import { DEFAULT_STATION, type StationId } from "./stations";
 
 let _client: Client | null = null;
 
@@ -12,28 +13,31 @@ export function db(): Client {
   return _client;
 }
 
-let _schemaReady: Promise<void> | null = null;
+// ---- schema ---------------------------------------------------------------
+//
+// Both data tables are multi-tenant: a `source` column tags each row with the
+// station it came from ('myc', 'mendota', …), and the primary key is composite
+// — (source, observed_at) for readings, (source, start_t) for regimes — so two
+// stations can report at the same instant without colliding.
 
-/** Create the readings table on first use (idempotent). */
-export function ensureSchema(): Promise<void> {
-  if (_schemaReady) return _schemaReady;
-  const numericCols = NUMERIC_COLUMNS.map((c) => `  ${c} REAL`).join(",\n");
-  const sql = `
-    CREATE TABLE IF NOT EXISTS readings (
-      observed_at INTEGER PRIMARY KEY,
+const READINGS_PK = ["source", "observed_at"] as const;
+
+function readingsDdl(table = "readings"): string {
+  const numericCols = NUMERIC_COLUMNS.map((c) => `      ${c} REAL`).join(",\n");
+  return `CREATE TABLE IF NOT EXISTS ${table} (
+      source TEXT NOT NULL DEFAULT 'myc',
+      observed_at INTEGER NOT NULL,
       fetched_at INTEGER NOT NULL,
       owner_name TEXT,
 ${numericCols},
-      raw_json TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_readings_observed_at ON readings (observed_at);
-    CREATE TABLE IF NOT EXISTS alerts_state (
-      key TEXT PRIMARY KEY,
-      active INTEGER NOT NULL DEFAULT 0,
-      last_sent INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS regimes (
-      start_t INTEGER PRIMARY KEY,
+      raw_json TEXT,
+      PRIMARY KEY (${READINGS_PK.join(", ")})
+    )`;
+}
+
+const REGIMES_DDL = `CREATE TABLE IF NOT EXISTS regimes (
+      source TEXT NOT NULL DEFAULT 'myc',
+      start_t INTEGER NOT NULL,
       end_t INTEGER NOT NULL,
       closed INTEGER NOT NULL DEFAULT 0,
       type TEXT,
@@ -57,29 +61,103 @@ ${numericCols},
       gust_factor REAL,
       speed_rate REAL,
       gloss TEXT,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_regimes_start ON regimes (start_t);
-  `;
-  // executeMultiple runs the statements sequentially.
-  _schemaReady = db()
-    .executeMultiple(sql)
-    .then(() => undefined);
-  return _schemaReady;
-}
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (source, start_t)
+    )`;
 
-const ALL_COLUMNS = [
+// Column lists used both for inserts and for the legacy → multi-tenant copy.
+const READING_BODY_COLS = [
   "observed_at",
   "fetched_at",
   "owner_name",
   ...NUMERIC_COLUMNS,
   "raw_json",
 ];
+const ALL_COLUMNS = ["source", ...READING_BODY_COLS];
+
+const REGIME_COLS = [
+  "start_t", "end_t", "closed", "type", "type_label", "confidence", "significance",
+  "duration_min", "count", "mean_dir", "amplitude", "net_shift", "shift_rate",
+  "trend_t", "trend_p", "half_life_min", "period_min", "hurst",
+  "speed_mean", "speed_min", "speed_max", "gust_factor", "speed_rate", "gloss", "updated_at",
+] as const;
+
+let _schemaReady: Promise<void> | null = null;
+
+async function hasColumn(table: string, column: string): Promise<{ exists: boolean; hasCol: boolean }> {
+  const info = await db().execute(`PRAGMA table_info(${table})`);
+  const names = (info.rows as unknown as { name: string }[]).map((r) => r.name);
+  return { exists: names.length > 0, hasCol: names.includes(column) };
+}
 
 /**
- * Insert a reading. observed_at is the primary key, so re-polling between
- * station updates (same observed_at) is a no-op. Returns true if a new row
- * was written.
+ * One-time, idempotent upgrade of pre-existing single-tenant tables to the
+ * multi-tenant schema. Detects a table that exists but lacks `source`, rebuilds
+ * it with the composite primary key, and copies every old row in tagged as the
+ * default station ('myc'). Runs inside a transaction (batch) so a failure rolls
+ * back and leaves the original table intact. No-op once migrated, and skipped
+ * entirely on a fresh database.
+ */
+async function migrateToMultiTenant(): Promise<void> {
+  const client = db();
+
+  const readings = await hasColumn("readings", "source");
+  if (readings.exists && !readings.hasCol) {
+    const cols = READING_BODY_COLS.join(", ");
+    await client.batch(
+      [
+        "ALTER TABLE readings RENAME TO readings_legacy",
+        readingsDdl("readings"),
+        `INSERT INTO readings (source, ${cols}) SELECT '${DEFAULT_STATION}', ${cols} FROM readings_legacy`,
+        "DROP TABLE readings_legacy",
+      ],
+      "write",
+    );
+  }
+
+  const regimes = await hasColumn("regimes", "source");
+  if (regimes.exists && !regimes.hasCol) {
+    const cols = REGIME_COLS.join(", ");
+    await client.batch(
+      [
+        "ALTER TABLE regimes RENAME TO regimes_legacy",
+        REGIMES_DDL,
+        `INSERT INTO regimes (source, ${cols}) SELECT '${DEFAULT_STATION}', ${cols} FROM regimes_legacy`,
+        "DROP TABLE regimes_legacy",
+      ],
+      "write",
+    );
+  }
+}
+
+/** Create / upgrade tables on first use (idempotent). */
+export function ensureSchema(): Promise<void> {
+  if (_schemaReady) return _schemaReady;
+  _schemaReady = (async () => {
+    await migrateToMultiTenant();
+    // Fresh-create for new databases + (re)create supporting objects. All
+    // statements are IF NOT EXISTS, so this is a no-op after a migration.
+    const sql = `
+      ${readingsDdl("readings")};
+      CREATE INDEX IF NOT EXISTS idx_readings_observed_at ON readings (observed_at);
+      CREATE TABLE IF NOT EXISTS alerts_state (
+        key TEXT PRIMARY KEY,
+        active INTEGER NOT NULL DEFAULT 0,
+        last_sent INTEGER NOT NULL DEFAULT 0
+      );
+      ${REGIMES_DDL};
+    `;
+    await db().executeMultiple(sql);
+  })();
+  return _schemaReady;
+}
+
+// ---- readings -------------------------------------------------------------
+
+/**
+ * Insert a reading. (source, observed_at) is the primary key, so re-polling
+ * between station updates (same observed_at) is a no-op. Returns true if a new
+ * row was written.
  */
 export async function insertReading(reading: Reading): Promise<boolean> {
   await ensureSchema();
@@ -94,7 +172,23 @@ export async function insertReading(reading: Reading): Promise<boolean> {
   return res.rowsAffected > 0;
 }
 
-/** Delete readings older than `days` days. Returns rows removed. */
+/** Insert many readings in a single transaction. Returns rows newly written. */
+export async function insertReadings(readings: Reading[]): Promise<number> {
+  if (!readings.length) return 0;
+  await ensureSchema();
+  const placeholders = ALL_COLUMNS.map(() => "?").join(", ");
+  const sql = `INSERT OR IGNORE INTO readings (${ALL_COLUMNS.join(
+    ", ",
+  )}) VALUES (${placeholders})`;
+  const stmts = readings.map((r) => ({
+    sql,
+    args: ALL_COLUMNS.map((c) => r[c] ?? null) as (number | string | null)[],
+  }));
+  const results = await db().batch(stmts, "write");
+  return results.reduce((sum, r) => sum + r.rowsAffected, 0);
+}
+
+/** Delete readings older than `days` days across all sources. Returns rows removed. */
 export async function pruneOlderThan(days: number): Promise<number> {
   await ensureSchema();
   const cutoff = Date.now() - days * 86_400_000;
@@ -110,8 +204,11 @@ export interface HistoryRow {
   [column: string]: number | string | null;
 }
 
-/** Return readings from the last `hours` hours, oldest first. */
-export async function getHistory(hours: number): Promise<HistoryRow[]> {
+/** Return a source's readings from the last `hours` hours, oldest first. */
+export async function getHistory(
+  hours: number,
+  source: StationId = DEFAULT_STATION,
+): Promise<HistoryRow[]> {
   await ensureSchema();
   const since = Date.now() - hours * 3600_000;
   // Skip the bulky raw_json blob for chart queries.
@@ -119,22 +216,43 @@ export async function getHistory(hours: number): Promise<HistoryRow[]> {
   const res = await db().execute({
     sql: `SELECT ${cols.join(
       ", ",
-    )} FROM readings WHERE observed_at >= ? ORDER BY observed_at ASC`,
-    args: [since],
+    )} FROM readings WHERE source = ? AND observed_at >= ? ORDER BY observed_at ASC`,
+    args: [source, since],
   });
   return res.rows as unknown as HistoryRow[];
 }
 
-/** Return the single most recent reading. */
-export async function getLatest(): Promise<HistoryRow | null> {
+/** Return the single most recent reading for a source. */
+export async function getLatest(
+  source: StationId = DEFAULT_STATION,
+): Promise<HistoryRow | null> {
   await ensureSchema();
   const cols = ["observed_at", "fetched_at", "owner_name", ...NUMERIC_COLUMNS];
-  const res = await db().execute(
-    `SELECT ${cols.join(
+  const res = await db().execute({
+    sql: `SELECT ${cols.join(
       ", ",
-    )} FROM readings ORDER BY observed_at DESC LIMIT 1`,
-  );
+    )} FROM readings WHERE source = ? ORDER BY observed_at DESC LIMIT 1`,
+    args: [source],
+  });
   return (res.rows[0] as unknown as HistoryRow) ?? null;
+}
+
+export async function getStats(source: StationId = DEFAULT_STATION): Promise<{
+  count: number;
+  first: number | null;
+  last: number | null;
+}> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: "SELECT COUNT(*) AS count, MIN(observed_at) AS first, MAX(observed_at) AS last FROM readings WHERE source = ?",
+    args: [source],
+  });
+  const r = res.rows[0] as unknown as {
+    count: number;
+    first: number | null;
+    last: number | null;
+  };
+  return { count: r.count, first: r.first, last: r.last };
 }
 
 // ---- alert cooldown state -------------------------------------------------
@@ -168,6 +286,7 @@ export async function setAlertState(key: string, state: AlertState): Promise<voi
 // ---- logged regimes -------------------------------------------------------
 
 export interface RegimeRow {
+  source: string;
   start_t: number;
   end_t: number;
   closed: number;
@@ -195,51 +314,35 @@ export interface RegimeRow {
   updated_at: number;
 }
 
-const REGIME_COLS = [
-  "start_t", "end_t", "closed", "type", "type_label", "confidence", "significance",
-  "duration_min", "count", "mean_dir", "amplitude", "net_shift", "shift_rate",
-  "trend_t", "trend_p", "half_life_min", "period_min", "hurst",
-  "speed_mean", "speed_min", "speed_max", "gust_factor", "speed_rate", "gloss", "updated_at",
-] as const;
+const REGIME_INSERT_COLS = ["source", ...REGIME_COLS] as const;
 
-/** Insert or update one logged regime, keyed on its start timestamp. */
+/** Insert or update one logged regime, keyed on (source, start_t). */
 export async function upsertRegime(row: RegimeRow): Promise<void> {
   await ensureSchema();
-  const placeholders = REGIME_COLS.map(() => "?").join(", ");
-  const updates = REGIME_COLS.filter((c) => c !== "start_t")
+  const placeholders = REGIME_INSERT_COLS.map(() => "?").join(", ");
+  const updates = REGIME_INSERT_COLS.filter((c) => c !== "source" && c !== "start_t")
     .map((c) => `${c} = excluded.${c}`)
     .join(", ");
   await db().execute({
-    sql: `INSERT INTO regimes (${REGIME_COLS.join(", ")}) VALUES (${placeholders})
-          ON CONFLICT(start_t) DO UPDATE SET ${updates}`,
-    args: REGIME_COLS.map((c) => (row as unknown as Record<string, number | string | null>)[c] ?? null),
+    sql: `INSERT INTO regimes (${REGIME_INSERT_COLS.join(", ")}) VALUES (${placeholders})
+          ON CONFLICT(source, start_t) DO UPDATE SET ${updates}`,
+    args: REGIME_INSERT_COLS.map(
+      (c) => (row as unknown as Record<string, number | string | null>)[c] ?? null,
+    ),
   });
 }
 
-/** Most recent logged regimes (newest first), optionally above a significance floor. */
-export async function getRegimes(limit = 200, minSignificance = 0): Promise<RegimeRow[]> {
+/** Most recent logged regimes for a source (newest first), above a significance floor. */
+export async function getRegimes(
+  limit = 200,
+  minSignificance = 0,
+  source: StationId = DEFAULT_STATION,
+): Promise<RegimeRow[]> {
   await ensureSchema();
   const res = await db().execute({
-    sql: `SELECT ${REGIME_COLS.join(", ")} FROM regimes
-          WHERE significance >= ? ORDER BY start_t DESC LIMIT ?`,
-    args: [minSignificance, limit],
+    sql: `SELECT source, ${REGIME_COLS.join(", ")} FROM regimes
+          WHERE source = ? AND significance >= ? ORDER BY start_t DESC LIMIT ?`,
+    args: [source, minSignificance, limit],
   });
   return res.rows as unknown as RegimeRow[];
-}
-
-export async function getStats(): Promise<{
-  count: number;
-  first: number | null;
-  last: number | null;
-}> {
-  await ensureSchema();
-  const res = await db().execute(
-    "SELECT COUNT(*) AS count, MIN(observed_at) AS first, MAX(observed_at) AS last FROM readings",
-  );
-  const r = res.rows[0] as unknown as {
-    count: number;
-    first: number | null;
-    last: number | null;
-  };
-  return { count: r.count, first: r.first, last: r.last };
 }

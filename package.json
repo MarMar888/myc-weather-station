@@ -1,12 +1,13 @@
 {
   "name": "myc-weather-station",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backfill:mendota": "node --env-file=.env.local --import tsx scripts/backfill-mendota.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -37,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }

@@ -42,7 +42,9 @@ export const NUMERIC_COLUMNS = Array.from(
 );
 
 export interface Reading {
-  // Epoch ms when the station last reported. Unique key for dedup.
+  // Which station/tenant this reading belongs to (DB `source` column).
+  source: string;
+  // Epoch ms when the station last reported. Unique within a source (dedup key).
   observed_at: number;
   // Epoch ms when we fetched it.
   fetched_at: number;
@@ -84,6 +86,7 @@ export async function fetchReading(
 
   const fetchedAt = Date.now();
   const reading: Reading = {
+    source: "myc",
     observed_at: data.lastReceived ?? fetchedAt,
     fetched_at: fetchedAt,
     owner_name: data.ownerName ?? null,

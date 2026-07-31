@@ -21,6 +21,7 @@ import {
   type Unit,
 } from "@/lib/patterns";
 import { Loader } from "@/components/loader";
+import type { StationId } from "@/lib/stations";
 
 const MPH_TO_KNOTS = 0.868976;
 type Row = Record<string, number | string | null> & { observed_at: number };
@@ -267,7 +268,7 @@ const RANGES: Range[] = [
   { label: "90d", hours: 24 * 90 },
 ];
 
-export function PatternsView({ unit }: { unit: Unit }) {
+export function PatternsView({ unit, source }: { unit: Unit; source: StationId }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [hours, setHours] = useState(24 * 30);
   const [spanHours, setSpanHours] = useState(0);
@@ -275,7 +276,7 @@ export function PatternsView({ unit }: { unit: Unit }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/history?hours=${hours}`, { cache: "no-store" });
+      const res = await fetch(`/api/history?hours=${hours}&source=${source}`, { cache: "no-store" });
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
@@ -285,7 +286,7 @@ export function PatternsView({ unit }: { unit: Unit }) {
     } catch {
       /* keep last good */
     }
-  }, [hours]);
+  }, [hours, source]);
 
   useEffect(() => {
     load();

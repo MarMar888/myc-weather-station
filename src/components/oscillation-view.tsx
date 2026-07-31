@@ -23,6 +23,7 @@ import {
   type WindSample,
 } from "@/lib/oscillation";
 import { Loader } from "@/components/loader";
+import type { StationId } from "@/lib/stations";
 
 const MPH_TO_KNOTS = 0.868976;
 type WindUnit = "kts" | "mph";
@@ -173,7 +174,7 @@ function RegimePanel({ a, unit, current }: { a: Regime; unit: WindUnit; current?
 
 type Mode = "regimes" | "30m" | "1h" | "day";
 
-export function OscillationView({ unit }: { unit: WindUnit }) {
+export function OscillationView({ unit, source }: { unit: WindUnit; source: StationId }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [mode, setMode] = useState<Mode>("regimes");
   const [selected, setSelected] = useState<number | null>(null);
@@ -181,7 +182,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/history?hours=24", { cache: "no-store" });
+      const res = await fetch(`/api/history?hours=24&source=${source}`, { cache: "no-store" });
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
@@ -189,7 +190,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
     } catch {
       /* keep last good */
     }
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     load();

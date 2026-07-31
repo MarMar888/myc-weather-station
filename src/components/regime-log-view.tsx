@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Loader } from "@/components/loader";
+import type { StationId } from "@/lib/stations";
 
 // Stored regimes are kts-native (server logs in knots), so the Log reads in kts
 // regardless of the page unit toggle — the baked plain-English gloss is in kts.
@@ -120,14 +121,14 @@ function RegimeCard({ r, fmt }: { r: RegimeRow; fmt: Intl.DateTimeFormat }) {
 type Floor = "all" | "notable" | "strong";
 const FLOORS: Record<Floor, number> = { all: 0, notable: 0.45, strong: 0.6 };
 
-export function RegimeLogView() {
+export function RegimeLogView({ source }: { source: StationId }) {
   const [rows, setRows] = useState<RegimeRow[]>([]);
   const [floor, setFloor] = useState<Floor>("all");
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/regimes?limit=300", { cache: "no-store" });
+      const res = await fetch(`/api/regimes?limit=300&source=${source}`, { cache: "no-store" });
       if (!res.ok) return;
       const j = await res.json();
       setRows(j.rows ?? []);
@@ -135,7 +136,7 @@ export function RegimeLogView() {
     } catch {
       /* keep last good */
     }
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     load();
