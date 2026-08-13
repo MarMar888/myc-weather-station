@@ -18,6 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import { WindDirRadar } from "@/components/wind-dir-radar";
+import { AirportsWindCard } from "@/components/airports-wind-card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OscillationView } from "@/components/oscillation-view";
@@ -823,6 +824,10 @@ function DashboardInner() {
                   ) : null}
                 </div>
               ))}
+            </div>
+
+            <div className="mb-4">
+              <AirportsWindCard />
             </div>
 
             {/* charts */}

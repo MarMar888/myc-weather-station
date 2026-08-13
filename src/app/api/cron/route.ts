@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchReading } from "@/lib/weatherlink";
-import { insertReading, pruneOlderThan } from "@/lib/db";
+import { fetchMetars } from "@/lib/metar";
+import { NEARBY_AIRPORT_IDS } from "@/lib/airports";
+import { insertReading, insertAirportReadings, pruneOlderThan } from "@/lib/db";
 import { evaluatePipelineHealth } from "@/lib/alerts";
 import { getPostHogClient } from "@/lib/posthog-server";
 
@@ -21,8 +23,29 @@ async function handle(req: NextRequest) {
   }
 
   try {
-    const reading = await fetchReading();
+    const fetchedAt = Date.now();
+    const [reading, metars] = await Promise.all([
+      fetchReading(),
+      fetchMetars(NEARBY_AIRPORT_IDS).catch(() => []),
+    ]);
     const inserted = await insertReading(reading);
+    const airportsLogged = await insertAirportReadings(
+      metars
+        .filter((m) => m.obsTime != null)
+        .map((m) => ({
+          icao_id: m.icaoId,
+          observed_at: (m.obsTime as number) * 1000,
+          fetched_at: fetchedAt,
+          name: m.name,
+          lat: m.lat,
+          lon: m.lon,
+          wdir: m.wdir,
+          wdir_variable: m.wdirVariable,
+          wspd: m.wspd,
+          wgst: m.wgst,
+          raw_ob: m.rawOb,
+        })),
+    );
     const pruned = await pruneOlderThan(RETENTION_DAYS);
     // Pipeline-health check runs every poll but never blocks or fails the extract.
     const health = await evaluatePipelineHealth().catch(() => null);
@@ -46,6 +69,7 @@ async function handle(req: NextRequest) {
       ok: true,
       recorded: true,
       inserted, // false when this observation was already stored
+      airportsLogged, // new airport_readings rows written this run
       pruned, // rows deleted for being older than RETENTION_DAYS
       health, // { configured, status, sent }
       observed_at: reading.observed_at,

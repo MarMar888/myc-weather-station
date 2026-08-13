@@ -32,6 +32,23 @@ ${numericCols},
       active INTEGER NOT NULL DEFAULT 0,
       last_sent INTEGER NOT NULL DEFAULT 0
     );
+    -- Nearby-airport METAR observations, logged on the same cron cadence as
+    -- the home station so both series stay time-aligned.
+    CREATE TABLE IF NOT EXISTS airport_readings (
+      icao_id TEXT NOT NULL,
+      observed_at INTEGER NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      name TEXT,
+      lat REAL,
+      lon REAL,
+      wdir REAL,
+      wdir_variable INTEGER,
+      wspd REAL,
+      wgst REAL,
+      raw_ob TEXT,
+      PRIMARY KEY (icao_id, observed_at)
+    );
+    CREATE INDEX IF NOT EXISTS idx_airport_readings_observed_at ON airport_readings (observed_at);
     -- Regimes are now computed on read from raw readings (see lib/regime-log.ts),
     -- so the old accumulating table is retired. Drop it to clear the overlapping
     -- near-duplicate rows it built up; nothing reads it any more.
@@ -78,6 +95,10 @@ export async function pruneOlderThan(days: number): Promise<number> {
     sql: "DELETE FROM readings WHERE observed_at < ?",
     args: [cutoff],
   });
+  await db().execute({
+    sql: "DELETE FROM airport_readings WHERE observed_at < ?",
+    args: [cutoff],
+  });
   return res.rowsAffected;
 }
 
@@ -111,6 +132,67 @@ export async function getLatest(): Promise<HistoryRow | null> {
     )} FROM readings ORDER BY observed_at DESC LIMIT 1`,
   );
   return (res.rows[0] as unknown as HistoryRow) ?? null;
+}
+
+// ---- nearby-airport METAR readings ----------------------------------------
+
+export interface AirportReading {
+  icao_id: string;
+  observed_at: number;
+  fetched_at: number;
+  name: string | null;
+  lat: number;
+  lon: number;
+  wdir: number | null;
+  wdir_variable: boolean;
+  wspd: number | null;
+  wgst: number | null;
+  raw_ob: string | null;
+}
+
+/** Insert a batch of airport readings in one round trip. Re-polling the same
+ * (icao_id, observed_at) is a no-op via INSERT OR IGNORE. */
+export async function insertAirportReadings(rows: AirportReading[]): Promise<number> {
+  await ensureSchema();
+  if (rows.length === 0) return 0;
+  const results = await db().batch(
+    rows.map((r) => ({
+      sql: `INSERT OR IGNORE INTO airport_readings
+        (icao_id, observed_at, fetched_at, name, lat, lon, wdir, wdir_variable, wspd, wgst, raw_ob)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        r.icao_id,
+        r.observed_at,
+        r.fetched_at,
+        r.name,
+        r.lat,
+        r.lon,
+        r.wdir,
+        r.wdir_variable ? 1 : 0,
+        r.wspd,
+        r.wgst,
+        r.raw_ob,
+      ],
+    })),
+    "write",
+  );
+  return results.reduce((sum, r) => sum + r.rowsAffected, 0);
+}
+
+/** Return the most recently logged reading for each airport. */
+export async function getLatestAirportReadings(): Promise<AirportReading[]> {
+  await ensureSchema();
+  const res = await db().execute(`
+    SELECT ar.icao_id, ar.observed_at, ar.fetched_at, ar.name, ar.lat, ar.lon,
+           ar.wdir, ar.wdir_variable, ar.wspd, ar.wgst, ar.raw_ob
+    FROM airport_readings ar
+    INNER JOIN (
+      SELECT icao_id, MAX(observed_at) AS max_t FROM airport_readings GROUP BY icao_id
+    ) latest ON ar.icao_id = latest.icao_id AND ar.observed_at = latest.max_t
+  `);
+  return (res.rows as unknown as (Omit<AirportReading, "wdir_variable"> & { wdir_variable: number })[]).map(
+    (r) => ({ ...r, wdir_variable: Boolean(r.wdir_variable) }),
+  );
 }
 
 // ---- alert cooldown state -------------------------------------------------
