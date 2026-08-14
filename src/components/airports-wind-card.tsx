@@ -253,8 +253,8 @@ export function AirportsWindCard() {
   const upwind = useMemo(() => data?.airports.filter((a) => a.upwind) ?? [], [data]);
 
   return (
-    <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] p-6">
-      <div className="mb-5 flex items-baseline justify-between">
+    <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] p-4 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className={LABEL}>Nearby airports · wind</h3>
         <span className="font-mono text-xs text-[var(--ink-faint)]">
           {data?.homeWindDir != null ? `home from ${compass(data.homeWindDir)}` : "—"}
@@ -267,7 +267,7 @@ export function AirportsWindCard() {
         <div className="py-24 text-center font-mono text-sm text-[var(--ink-faint)]">Loading…</div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
-          <div className="mx-auto size-[420px]">
+          <div className="mx-auto aspect-square w-full max-w-[420px]">
             <AirportsMap {...data} hoveredId={hoveredId} onHover={setHoveredId} />
           </div>
 
