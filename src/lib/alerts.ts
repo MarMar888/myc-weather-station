@@ -12,6 +12,7 @@
 // uptime ping closes that last gap — see /api/health.
 
 import { getLatest, getAlertState, setAlertState } from "./db";
+import { alertsEnabled } from "./features";
 
 function envNum(name: string, fallback: number): number {
   const v = Number(process.env[name]);
@@ -19,7 +20,7 @@ function envNum(name: string, fallback: number): number {
 }
 
 export function emailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.ALERT_FROM && process.env.ALERT_TO);
+  return alertsEnabled() && Boolean(process.env.RESEND_API_KEY && process.env.ALERT_FROM && process.env.ALERT_TO);
 }
 
 const SITE = "https://myc-weather-station.vercel.app";

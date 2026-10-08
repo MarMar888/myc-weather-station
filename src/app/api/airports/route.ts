@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchMetars } from "@/lib/metar";
 import { HOME, NEARBY_AIRPORT_IDS, bearingDeg, distanceNm, angleDiff } from "@/lib/airports";
 import { getLatest, getLatestAirportReadings, type AirportReading } from "@/lib/db";
+import { apisEnabled, apisDisabled } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ function fromLogged(r: AirportReading): StationLike {
 }
 
 export async function GET() {
+  if (!apisEnabled()) return apisDisabled();
   try {
     // The cron job logs every nearby airport on the same cadence as the home
     // station, so normally we just read that back — no live third-party

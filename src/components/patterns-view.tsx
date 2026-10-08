@@ -287,11 +287,12 @@ export function PatternsView({ unit }: { unit: Unit }) {
     }
   }, [hours]);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 5 * 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   load();
+  //   const id = setInterval(load, 5 * 60_000);
+  //   return () => clearInterval(id);
+  // }, [load]);
 
   // Only offer windows we actually have data for (always keep the smallest).
   const availRanges = useMemo(

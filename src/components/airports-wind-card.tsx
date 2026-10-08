@@ -244,11 +244,12 @@ export function AirportsWindCard() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 3 * 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   load();
+  //   const id = setInterval(load, 3 * 60_000);
+  //   return () => clearInterval(id);
+  // }, [load]);
 
   const upwind = useMemo(() => data?.airports.filter((a) => a.upwind) ?? [], [data]);
 

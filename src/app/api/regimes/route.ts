@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getHistory } from "@/lib/db";
 import { detectLoggableRegimes } from "@/lib/regime-log";
+import { apisEnabled, apisDisabled } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 // fresh from the raw readings (newest first). No accumulation, so the same period
 // can never appear twice.
 export async function GET(req: NextRequest) {
+  if (!apisEnabled()) return apisDisabled();
   const hours = Math.min(Math.max(Number(req.nextUrl.searchParams.get("hours")) || 48, 1), 168);
   const minSig = Math.min(Math.max(Number(req.nextUrl.searchParams.get("minSig")) || 0, 0), 1);
   try {
