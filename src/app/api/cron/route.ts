@@ -4,7 +4,8 @@ import { fetchMetars } from "@/lib/metar";
 import { NEARBY_AIRPORT_IDS } from "@/lib/airports";
 import { insertReading, insertAirportReadings, pruneOlderThan } from "@/lib/db";
 import { evaluatePipelineHealth } from "@/lib/alerts";
-import { getPostHogClient } from "@/lib/posthog-server";
+// import { getPostHogClient } from "@/lib/posthog-server";
+import { apisEnabled, apisDisabled } from "@/lib/features";
 
 // Drop readings older than this on every run, so the table self-trims.
 const RETENTION_DAYS = 360;
@@ -13,6 +14,7 @@ const RETENTION_DAYS = 360;
 export const dynamic = "force-dynamic";
 
 async function handle(req: NextRequest) {
+  if (!apisEnabled()) return apisDisabled();
   // The cloud scheduler (Upstash QStash) sends the secret as a Bearer token.
   // Require it in production; allow ?force=1 for manual/local triggering.
   const secret = process.env.CRON_SECRET;
@@ -50,20 +52,21 @@ async function handle(req: NextRequest) {
     // Pipeline-health check runs every poll but never blocks or fails the extract.
     const health = await evaluatePipelineHealth().catch(() => null);
 
-    if (inserted) {
-      const posthog = getPostHogClient();
-      posthog.capture({
-        distinctId: "cron",
-        event: "weather_reading_recorded",
-        properties: {
-          observed_at: reading.observed_at,
-          wind_speed: reading.wind_speed,
-          wind_gust_2min: reading.wind_gust_2min,
-          wind_dir: reading.wind_dir,
-          pruned,
-        },
-      });
-    }
+    // DISABLED: PostHog analytics is off. Uncomment to re-enable.
+    // if (inserted) {
+    //   const posthog = getPostHogClient();
+    //   posthog.capture({
+    //     distinctId: "cron",
+    //     event: "weather_reading_recorded",
+    //     properties: {
+    //       observed_at: reading.observed_at,
+    //       wind_speed: reading.wind_speed,
+    //       wind_gust_2min: reading.wind_gust_2min,
+    //       wind_dir: reading.wind_dir,
+    //       pruned,
+    //     },
+    //   });
+    // }
 
     return NextResponse.json({
       ok: true,

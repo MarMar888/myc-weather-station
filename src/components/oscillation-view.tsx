@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import posthog from "posthog-js";
+// import posthog from "posthog-js";
 import {
   CartesianGrid,
   Line,
@@ -251,29 +251,31 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   load();
+  //   const id = setInterval(load, 60_000);
+  //   return () => clearInterval(id);
+  // }, [load]);
 
   // A wider, infrequent pull feeds the forecast's diurnal/pressure priors
   // (recurring afternoon thermals, leading barometer) without bloating the 60s poll.
-  useEffect(() => {
-    const loadPriors = async () => {
-      try {
-        const res = await fetch("/api/history?hours=168", { cache: "no-store" });
-        if (!res.ok) return;
-        const j = await res.json();
-        setPriorRows(j.rows ?? []);
-      } catch {
-        /* keep last good */
-      }
-    };
-    loadPriors();
-    const id = setInterval(loadPriors, 30 * 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   const loadPriors = async () => {
+  //     try {
+  //       const res = await fetch("/api/history?hours=168", { cache: "no-store" });
+  //       if (!res.ok) return;
+  //       const j = await res.json();
+  //       setPriorRows(j.rows ?? []);
+  //     } catch {
+  //       /* keep last good */
+  //     }
+  //   };
+  //   loadPriors();
+  //   const id = setInterval(loadPriors, 30 * 60_000);
+  //   return () => clearInterval(id);
+  // }, []);
 
   const calmCutoff = unit === "kts" ? 1.5 : 1.7;
 
@@ -345,7 +347,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
           onValueChange={(v) => {
             if (!v) return;
             setMode(v as Mode);
-            posthog.capture("oscillation_mode_changed", { mode: v });
+            // posthog.capture("oscillation_mode_changed", { mode: v });
           }}
           variant="outline"
           className="border-[var(--hairline)]"
@@ -363,7 +365,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
               if (!v) return;
               setSelected(null);
               setWinH(Number(v));
-              posthog.capture("regime_window_changed", { hours: Number(v) });
+              // posthog.capture("regime_window_changed", { hours: Number(v) });
             }}
             variant="outline"
             className="border-[var(--hairline)]"
@@ -390,7 +392,7 @@ export function OscillationView({ unit }: { unit: WindUnit }) {
                   key={i}
                   onClick={() => {
                     setSelected(i);
-                    posthog.capture("regime_selected", { type: rg.type, duration_min: Math.round(rg.durationMin) });
+                    // posthog.capture("regime_selected", { type: rg.type, duration_min: Math.round(rg.durationMin) });
                   }}
                   title={`${rg.typeLabel} · ${rg.durationMin.toFixed(0)} min`}
                   className="group relative flex min-w-[8%] items-center justify-center border-r border-[var(--hairline)] last:border-r-0"

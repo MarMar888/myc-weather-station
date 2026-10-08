@@ -143,11 +143,12 @@ export function RegimeLogView() {
     }
   }, [win]);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 3 * 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   load();
+  //   const id = setInterval(load, 3 * 60_000);
+  //   return () => clearInterval(id);
+  // }, [load]);
 
   const fmt = useMemo(
     () => new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),

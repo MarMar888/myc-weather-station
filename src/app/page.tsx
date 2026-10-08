@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import posthog from "posthog-js";
+// import posthog from "posthog-js";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Area,
@@ -245,7 +245,7 @@ function FeatureModal({ onClose }: { onClose: () => void }) {
     const body = encodeURIComponent(
       `${text.trim()}${email.trim() ? `\n\nFrom: ${email.trim()}` : ""}`,
     );
-    posthog.capture("feature_request_submitted", { has_email: !!email.trim() });
+    // posthog.capture("feature_request_submitted", { has_email: !!email.trim() });
     window.open(`mailto:marleyhansenbarrett@gmail.com?subject=${subject}&body=${body}`);
     onClose();
   }
@@ -310,7 +310,7 @@ function CustomRangeModal({ current, onApply, onClose }: { current: number; onAp
   function handleApply() {
     if (total < 1) return;
     const capped = Math.min(total, 2160);
-    posthog.capture("custom_range_applied", { hours: capped });
+    // posthog.capture("custom_range_applied", { hours: capped });
     onApply(capped);
     onClose();
   }
@@ -432,17 +432,19 @@ function DashboardInner() {
     }
   }, []);
 
-  useEffect(() => {
-    loadHistory();
-    const id = setInterval(loadHistory, 5 * 60_000);
-    return () => clearInterval(id);
-  }, [loadHistory]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   loadHistory();
+  //   const id = setInterval(loadHistory, 5 * 60_000);
+  //   return () => clearInterval(id);
+  // }, [loadHistory]);
 
-  useEffect(() => {
-    loadLive();
-    const id = setInterval(loadLive, 30_000);
-    return () => clearInterval(id);
-  }, [loadLive]);
+  // DISABLED: API polling is off (see src/lib/features.ts). Uncomment to re-enable.
+  // useEffect(() => {
+  //   loadLive();
+  //   const id = setInterval(loadLive, 30_000);
+  //   return () => clearInterval(id);
+  // }, [loadLive]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -608,7 +610,7 @@ function DashboardInner() {
       key={id}
       onClick={() => {
         setTab(id);
-        posthog.capture("tab_changed", { tab: id });
+        // posthog.capture("tab_changed", { tab: id });
       }}
       className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
         tab === id
@@ -685,7 +687,7 @@ function DashboardInner() {
               onValueChange={(v) => {
                 if (!v) return;
                 setUnit(v as WindUnit);
-                posthog.capture("wind_unit_changed", { unit: v });
+                // posthog.capture("wind_unit_changed", { unit: v });
               }}
               variant="outline"
               className="border-[var(--hairline)]"
@@ -704,7 +706,7 @@ function DashboardInner() {
                   onValueChange={(v) => {
                     if (!v) return;
                     setHours(Number(v));
-                    posthog.capture("time_range_changed", { hours: Number(v) });
+                    // posthog.capture("time_range_changed", { hours: Number(v) });
                   }}
                   variant="outline"
                   className="border-[var(--hairline)]"

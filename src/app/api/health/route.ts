@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pipelineStatus, evaluatePipelineHealth } from "@/lib/alerts";
+import { apisEnabled, apisDisabled } from "@/lib/features";
 
 // Always live — reflects current DB freshness.
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 //   calling it can never produce a false alarm even if left unguarded; we still
 //   require the bearer secret (when set) before doing the side-effecting check.
 async function handle(req: NextRequest) {
+  if (!apisEnabled()) return apisDisabled();
   const notify = req.nextUrl.searchParams.get("notify") === "1";
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
